@@ -1,0 +1,43 @@
+server:
+  host: 0.0.0.0
+  port: 8010
+  request_timeout_ms: 60000
+
+scheduler:
+  tick_ms: 10
+  queue_max_size: 500
+  queue_max_age_ms: 200
+  dispatch_batch_size: 20
+
+routing:
+  inflight_weight: 8.0
+  queue_weight: 0.04
+  ttft_weight: 0.03
+  e2e_weight: 0.02
+  error_weight: 100.0
+  hot_penalty_weight: 20.0
+  overload_penalty_weight: 15.0
+  hot_window_sec: 2.0
+  hot_target_share: 0.55
+
+backends:
+  - name: gpu-node-1
+    url: http://127.0.0.1:8000
+    soft_limit: 8
+    hard_limit: 16
+    drained: false
+  - name: gpu-node-2
+    url: http://127.0.0.1:8001
+    soft_limit: 8
+    hard_limit: 16
+    drained: false
+
+health:
+  consecutive_failures_open: 5
+  open_cooldown_ms: 15000
+  half_open_max_inflight: 1
+  max_error_rate_for_eligibility: 0.35
+
+retry:
+  max_attempts: 2
+  retryable_statuses: [502, 503, 504]

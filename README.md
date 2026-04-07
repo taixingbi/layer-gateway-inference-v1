@@ -113,10 +113,14 @@ vllm serve Qwen/Qwen2.5-7B-Instruct \
   --port 8000 \
   --gpu-memory-utilization 0.8 \
   --max-num-seqs 16
-2. Run gateway
-uvicorn app.main:app --host 0.0.0.0 --port 9000
-3. Send request
-curl http://localhost:9000/v1/chat/completions \
+2. Build a local virtualenv and install the gateway (on the host where you run it)
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+3. Run gateway
+uvicorn app.main:app --host 0.0.0.0 --port 8010
+4. Send request
+curl http://localhost:8010/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "Qwen/Qwen2.5-7B-Instruct",
