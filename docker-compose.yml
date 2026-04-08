@@ -1,0 +1,18 @@
+services:
+  gateway:
+    image: layer-gateway-inference-v1
+    build: .
+    container_name: layer-gateway-inference-v1
+    restart: unless-stopped
+    ports:
+      - "8010:8010"
+    environment:
+      - GATEWAY_CONFIG=${GATEWAY_CONFIG:-/app/config.yaml}
+      - GRAFANA_CLOUD_URL=${GRAFANA_CLOUD_URL:-}
+      - GRAFANA_CLOUD_USER=${GRAFANA_CLOUD_USER:-}
+      - GRAFANA_CLOUD_API_KEY=${GRAFANA_CLOUD_API_KEY:-}
+      - GRAFANA_CLOUD_WRITE_API_KEY=${GRAFANA_CLOUD_WRITE_API_KEY:-}
+      - ENV=${ENV:-}
+    # Mount config with reachable vLLM URLs (e.g. NodePort http://192.168.86.173:30080)
+    # volumes:
+    #   - ./config.yaml:/app/config.yaml:ro

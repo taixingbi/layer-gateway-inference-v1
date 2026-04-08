@@ -441,11 +441,11 @@ routing:
 
 backends:
   - name: gpu-node-1
-    url: http://192.168.86.173:8000
+    url: http://192.168.86.173:30080
     soft_limit: 8
     hard_limit: 16
   - name: gpu-node-2
-    url: http://192.168.86.176:8000
+    url: http://192.168.86.176:30080
     soft_limit: 8
     hard_limit: 16
 

@@ -103,9 +103,9 @@ Example:
 
 backends:
   - name: gpu-node-1
-    url: http://192.168.86.179:8000
+    url: http://192.168.86.173:30080
   - name: gpu-node-2
-    url: http://192.168.86.180:8000
+    url: http://192.168.86.176:30080
 🧪 Running
 1. Start vLLM on each GPU node
 vllm serve Qwen/Qwen2.5-7B-Instruct \
@@ -130,7 +130,32 @@ curl http://localhost:8010/v1/chat/completions \
     "messages": [{"role":"user","content":"Hello"}]
   }'
 
-If you see **504** with `connect` / *connection attempts failed*, the gateway could not reach the URLs in `config.yaml` (default `http://127.0.0.1:8000` and `:8001`). Start vLLM on those hosts/ports or edit the backend urls, then check with `curl http://<backend-host>:<port>/v1/models`.
+If you see **504** with `connect` / *connection attempts failed*, the gateway could not reach the URLs in `config.yaml`. This repo expects two NodePort (or equivalent) endpoints, e.g. `http://192.168.86.173:30080` and `http://192.168.86.176:30080` — adjust to your LAN. Verify with `curl -sS http://192.168.86.173:30080/v1/models` (and the second node).
+
+## Docker
+
+Build and run locally (ensure **backend URLs** in the mounted `config.yaml` reach vLLM from inside the container — use the same LAN NodePort URLs as on the host, e.g. `http://192.168.86.173:30080`, not `127.0.0.1` unless the model server listens on the bridge.)
+
+```bash
+docker build -t layer-gateway-inference-v1 .
+docker run --rm -p 8010:8010 \
+  -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
+  layer-gateway-inference-v1
+```
+
+For Grafana Loki, pass `-e GRAFANA_CLOUD_*` vars or `--env-file .env` (see `.env.example`).
+
+Or with Compose:
+
+```bash
+docker compose up -d --build
+```
+
+Uncomment the `volumes` entry in `docker-compose.yml` when you need a host-specific `config.yaml`.
+
+### CI: publish to Docker Hub on `main`
+
+Same pattern as [layer-gateway-embed-v1](https://github.com/taixingbi/layer-gateway-embed-v1): workflow `.github/workflows/docker-push.yml` runs on every push to **`main`** (and manual **workflow_dispatch**). Add repository secrets **`DOCKERHUB_USERNAME`** and **`DOCKERHUB_TOKEN`**. Images are tagged `latest` and `${{ github.sha }}`.
 
 ⚡ Performance Benefits
 
