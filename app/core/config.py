@@ -16,7 +16,7 @@ class ServerConfig(BaseModel):
 class SchedulerConfig(BaseModel):
     tick_ms: int = 10
     queue_max_size: int = 500
-    queue_max_age_ms: int = 200
+    queue_max_age_ms: int = 2000
     dispatch_batch_size: int = 20
 
 
@@ -35,8 +35,8 @@ class RoutingConfig(BaseModel):
 class BackendEntry(BaseModel):
     name: str
     url: str
-    soft_limit: int = 8
-    hard_limit: int = 16
+    soft_limit: int = 16
+    hard_limit: int = 24
     drained: bool = False
 
 

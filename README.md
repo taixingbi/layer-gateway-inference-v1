@@ -123,7 +123,7 @@ Optional — ship logs to **Grafana Loki** ([tb-loki-central-logger](https://pyp
 3. Run gateway
 uvicorn app.main:app --host 0.0.0.0 --port 8010
 4. Send request
-curl http://localhost:8010/v1/chat/completions \
+curl http://192.168.86.179:8010/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "Qwen/Qwen2.5-7B-Instruct",
@@ -140,10 +140,11 @@ Build and run locally (ensure **backend URLs** in the mounted `config.yaml` reac
 docker build -t layer-gateway-inference-v1 .
 docker run --rm -p 8010:8010 \
   -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
+  --env-file .env \
   layer-gateway-inference-v1
 ```
 
-For Grafana Loki, pass `-e GRAFANA_CLOUD_*` vars or `--env-file .env` (see `.env.example`).
+Place **`Grafana Loki`** (and any other) vars in **`.env`** next to your run command (see `.env.example`). You can omit `--env-file .env` if you only need the baked-in `config.yaml` and no Loki.
 
 Or with Compose:
 
@@ -152,6 +153,22 @@ docker compose up -d --build
 ```
 
 Uncomment the `volumes` entry in `docker-compose.yml` when you need a host-specific `config.yaml`.
+
+### Pull and run from Docker Hub
+
+On the target host, keep a **`config.yaml`** (backend NodePort URLs, etc.) and **`.env`** (Grafana / Loki) in the directory you run from, then:
+
+```bash
+ssh tb@192.168.86.179
+sudo docker pull taixingbi/layer-gateway-inference-v1:latest
+sudo docker rm -f gateway-inference
+sudo docker run -d --restart unless-stopped \
+  --name gateway-inference \
+  -p 8010:8010 \
+  -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
+  --env-file .env \
+  taixingbi/layer-gateway-inference-v1:latest
+```
 
 ### CI: publish to Docker Hub on `main`
 

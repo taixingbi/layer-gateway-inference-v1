@@ -427,7 +427,7 @@ server:
 scheduler:
   tick_ms: 10
   queue_max_size: 500
-  queue_max_age_ms: 200
+  queue_max_age_ms: 2000
   dispatch_batch_size: 20
 
 routing:
@@ -442,12 +442,12 @@ routing:
 backends:
   - name: gpu-node-1
     url: http://192.168.86.173:30080
-    soft_limit: 8
-    hard_limit: 16
+    soft_limit: 16
+    hard_limit: 24
   - name: gpu-node-2
     url: http://192.168.86.176:30080
-    soft_limit: 8
-    hard_limit: 16
+    soft_limit: 16
+    hard_limit: 24
 
 health:
   consecutive_failures_open: 5
