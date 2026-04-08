@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 from fastapi import HTTPException, Response
@@ -88,6 +89,25 @@ def _should_retry_status(code: int, cfg: GatewayConfig) -> bool:
     return code in set(cfg.retry.retryable_statuses)
 
 
+def _transport_error_detail(exc: Exception) -> str:
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    if isinstance(exc, httpx.ConnectError):
+        return "connect"
+    return type(exc).__name__
+
+
+def _upstream_unreachable_detail(
+    rid: str, attempts: list[dict[str, Any]]
+) -> dict[str, Any]:
+    return {
+        "message": "upstream timeout or connection error",
+        "request_id": rid,
+        "attempts": attempts,
+        "hint": "Verify vLLM is running and config.yaml backend urls match (e.g. curl http://HOST:PORT/v1/models).",
+    }
+
+
 async def proxy_chat_completion(
     *,
     client: httpx.AsyncClient,
@@ -105,6 +125,7 @@ async def proxy_chat_completion(
     target = initial
     attempts = 0
     last_error: Exception | None = None
+    transport_attempts: list[dict[str, Any]] = []
 
     while attempts < cfg.retry.max_attempts:
         attempts += 1
@@ -122,6 +143,8 @@ async def proxy_chat_completion(
                     url=url,
                     headers=headers,
                     timeout=timeout,
+                    rid=rid,
+                    transport_attempts=transport_attempts,
                 )
 
             resp = await _non_stream_once(
@@ -161,6 +184,14 @@ async def proxy_chat_completion(
 
         except (httpx.TimeoutException, httpx.ConnectError) as e:
             last_error = e
+            transport_attempts.append(
+                {
+                    "backend": target.name,
+                    "url": url,
+                    "kind": _transport_error_detail(e),
+                    "detail": str(e),
+                }
+            )
             prom.gateway_request_errors_total.labels(backend=target.name).inc()
             if st:
                 health_mod.on_failure(st, registry.health_config())
@@ -174,10 +205,20 @@ async def proxy_chat_completion(
                     continue
             _release_dispatch(registry, target.name, pending.classify)
             logger.warning("[%s] proxy error %s: %s", rid, target.name, e)
-            raise HTTPException(status_code=504, detail="upstream timeout or connection error") from e
+            raise HTTPException(
+                status_code=504,
+                detail=_upstream_unreachable_detail(rid, transport_attempts),
+            ) from e
 
     _release_dispatch(registry, target.name, pending.classify)
-    raise HTTPException(status_code=502, detail=str(last_error or "retry exhausted"))
+    raise HTTPException(
+        status_code=502,
+        detail={
+            "message": str(last_error or "retry exhausted"),
+            "request_id": rid,
+            "attempts": transport_attempts,
+        },
+    )
 
 
 async def _proxy_streaming(
@@ -189,6 +230,8 @@ async def _proxy_streaming(
     url: str,
     headers: dict[str, str],
     timeout: httpx.Timeout,
+    rid: str,
+    transport_attempts: list[dict[str, Any]],
 ) -> StreamingResponse:
     t0_req = time.monotonic()
     st = registry.get(target.name)
@@ -202,12 +245,23 @@ async def _proxy_streaming(
         )
         resp = await client.send(req, stream=True)
     except (httpx.TimeoutException, httpx.ConnectError) as e:
+        transport_attempts.append(
+            {
+                "backend": target.name,
+                "url": url,
+                "kind": _transport_error_detail(e),
+                "detail": str(e),
+            }
+        )
         if st:
             health_mod.on_failure(st, registry.health_config())
             st.update_failure()
         prom.gateway_request_errors_total.labels(backend=target.name).inc()
         _release_dispatch(registry, target.name, pending.classify)
-        raise HTTPException(status_code=504, detail=str(e)) from e
+        raise HTTPException(
+            status_code=504,
+            detail=_upstream_unreachable_detail(rid, transport_attempts),
+        ) from e
 
     ttft_ms = (time.monotonic() - t0_req) * 1000
 

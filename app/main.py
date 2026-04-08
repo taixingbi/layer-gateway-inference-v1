@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from app.api.routes import router
 from app.backends.registry import BackendRegistry
 from app.core.config import load_gateway_config
-from app.core.logging import setup_logging
+from app.core.logging import setup_logging, shutdown_logging
 from app.queue.admission_queue import AdmissionQueue
 from app.scheduler.dispatcher import run_scheduler_loop
 
@@ -46,7 +46,10 @@ async def lifespan(app: FastAPI):
         await scheduler_task
     except asyncio.CancelledError:
         pass
-    await client.aclose()
+    try:
+        await client.aclose()
+    finally:
+        shutdown_logging()
 
 
 app = FastAPI(title="layer-gateway-inference-v1", lifespan=lifespan)

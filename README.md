@@ -117,6 +117,9 @@ vllm serve Qwen/Qwen2.5-7B-Instruct \
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+
+Optional — ship logs to **Grafana Loki** ([tb-loki-central-logger](https://pypi.org/project/tb-loki-central-logger/)): copy `.env.example` to `.env` in the process working directory and set `GRAFANA_CLOUD_URL`, `GRAFANA_CLOUD_USER`, and `GRAFANA_CLOUD_API_KEY` (or legacy `GRAFANA_CLOUD_WRITE_API_KEY`). Without these, the gateway still logs JSON to stderr only.
+
 3. Run gateway
 uvicorn app.main:app --host 0.0.0.0 --port 8010
 4. Send request
@@ -126,6 +129,9 @@ curl http://localhost:8010/v1/chat/completions \
     "model": "Qwen/Qwen2.5-7B-Instruct",
     "messages": [{"role":"user","content":"Hello"}]
   }'
+
+If you see **504** with `connect` / *connection attempts failed*, the gateway could not reach the URLs in `config.yaml` (default `http://127.0.0.1:8000` and `:8001`). Start vLLM on those hosts/ports or edit the backend urls, then check with `curl http://<backend-host>:<port>/v1/models`.
+
 ⚡ Performance Benefits
 
 Compared to default k3s routing:
