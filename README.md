@@ -111,8 +111,8 @@ backends:
 vllm serve Qwen/Qwen2.5-7B-Instruct \
   --host 0.0.0.0 \
   --port 8000 \
-  --gpu-memory-utilization 0.8 \
-  --max-num-seqs 16
+  --gpu-memory-utilization 0.7 \
+  --max-num-seqs 32
 2. Build a local virtualenv and install the gateway (on the host where you run it)
 python3 -m venv .venv
 source .venv/bin/activate
