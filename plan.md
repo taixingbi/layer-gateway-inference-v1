@@ -442,12 +442,12 @@ routing:
 backends:
   - name: gpu-node-1
     url: http://192.168.86.173:30080
-    soft_limit: 24
-    hard_limit: 32
+    soft_limit: 20
+    hard_limit: 28
   - name: gpu-node-2
     url: http://192.168.86.176:30080
-    soft_limit: 24
-    hard_limit: 32
+    soft_limit: 20
+    hard_limit: 28
 
 health:
   consecutive_failures_open: 5

@@ -35,8 +35,8 @@ class RoutingConfig(BaseModel):
 class BackendEntry(BaseModel):
     name: str
     url: str
-    soft_limit: int = 24
-    hard_limit: int = 32
+    soft_limit: int = 20
+    hard_limit: int = 28
     drained: bool = False
 
 
