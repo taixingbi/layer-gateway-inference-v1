@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from app.api.routes import router
 from app.backends.registry import BackendRegistry
 from app.core.config import load_gateway_config
-from app.core.logging import setup_logging, shutdown_logging
+from app.core.logging import log_gateway_event, setup_logging, shutdown_logging
 from app.queue.admission_queue import AdmissionQueue
 from app.scheduler.dispatcher import run_scheduler_loop
 
@@ -33,11 +33,15 @@ async def lifespan(app: FastAPI):
     app.state.registry = registry
     app.state.queue = queue
     app.state.http = client
-    logger.info(
-        "gateway listening on %s:%s; backends=%s",
-        cfg.server.host,
-        cfg.server.port,
-        [b.name for b in cfg.backends],
+    log_gateway_event(
+        logger,
+        logging.INFO,
+        "gateway_started",
+        gateway_meta={
+            "host": cfg.server.host,
+            "port": cfg.server.port,
+            "backends": [b.name for b in cfg.backends],
+        },
     )
     yield
     stop.set()

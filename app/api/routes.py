@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from app.core.logging import new_request_id
+from app.core.logging import log_gateway_event, new_request_id
 from app.core.types import BackendTarget, PendingRequest, RejectionReason
 from app.metrics.prometheus import gateway_requests_total, observe_rejection
 from app.metrics.sync import sync_backend_gauges
@@ -39,23 +39,98 @@ async def metrics(request: Request) -> Response:
 @router.api_route("/v1/chat/completions", methods=["POST"])
 async def chat_completions(request: Request) -> Response:
     rid = request.headers.get("x-request-id") or new_request_id()
+    trace_id = request.headers.get("x-trace-id") or request.headers.get("X-Trace-Id")
+    session_id = request.headers.get("x-session-id") or request.headers.get("X-Session-Id")
+    path = request.url.path or "/v1/chat/completions"
     cfg = request.app.state.cfg
     registry = request.app.state.registry
     queue: AdmissionQueue = request.app.state.queue
     client: httpx.AsyncClient = request.app.state.http
 
+    log_gateway_event(
+        logger,
+        logging.INFO,
+        "request_received",
+        request_id=rid,
+        trace_id=trace_id,
+        session_id=session_id,
+        path=path,
+    )
+
     body = await request.body()
     if not body:
+        log_gateway_event(
+            logger,
+            logging.WARN,
+            "request_rejected",
+            request_id=rid,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=path,
+            error={
+                "type": "ValidationError",
+                "message": "empty body",
+                "code": "empty_body",
+                "retryable": False,
+            },
+        )
         raise HTTPException(status_code=400, detail="empty body")
 
     try:
         data = json.loads(body.decode("utf-8"))
     except json.JSONDecodeError as e:
+        log_gateway_event(
+            logger,
+            logging.WARN,
+            "request_rejected",
+            request_id=rid,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=path,
+            error={
+                "type": "ValidationError",
+                "message": str(e),
+                "code": "invalid_json",
+                "retryable": False,
+            },
+        )
         raise HTTPException(status_code=400, detail=f"invalid json: {e}") from e
 
-    _validate_minimal_chat(data)
+    try:
+        _validate_minimal_chat(data)
+    except HTTPException as e:
+        log_gateway_event(
+            logger,
+            logging.WARN,
+            "request_rejected",
+            request_id=rid,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=path,
+            error={
+                "type": "ValidationError",
+                "message": str(e.detail),
+                "code": "invalid_chat_payload",
+                "retryable": False,
+            },
+        )
+        raise
 
     classify = classify_chat_body(body)
+    log_gateway_event(
+        logger,
+        logging.INFO,
+        "request_classified",
+        request_id=rid,
+        trace_id=trace_id,
+        session_id=session_id,
+        path=path,
+        gateway_meta={
+            "request_class": classify.req_class.value,
+            "stream": classify.stream,
+            "est_tokens": classify.est_tokens,
+        },
+    )
 
     dispatch_future = asyncio.get_running_loop().create_future()
     q = f"?{request.url.query}" if request.url.query else ""
@@ -64,7 +139,7 @@ async def chat_completions(request: Request) -> Response:
         enqueued_at_monotonic=time.monotonic(),
         classify=classify,
         body=body,
-        path=request.url.path or "/v1/chat/completions",
+        path=path,
         query=q,
         client_headers={k: v for k, v in request.headers.items() if isinstance(v, str)},
         dispatch_future=dispatch_future,
@@ -76,10 +151,35 @@ async def chat_completions(request: Request) -> Response:
         await queue.enqueue(pending)
     except QueueFullError:
         observe_rejection(RejectionReason.QUEUE_FULL)
+        log_gateway_event(
+            logger,
+            logging.WARN,
+            "request_rejected",
+            request_id=rid,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=path,
+            error={
+                "type": "QueueFull",
+                "message": "admission queue at capacity",
+                "code": RejectionReason.QUEUE_FULL.value,
+                "retryable": True,
+            },
+        )
         raise HTTPException(
             status_code=503,
             detail={"reason": str(RejectionReason.QUEUE_FULL.value), "request_id": rid},
         ) from None
+
+    log_gateway_event(
+        logger,
+        logging.INFO,
+        "request_enqueued",
+        request_id=rid,
+        trace_id=trace_id,
+        session_id=session_id,
+        path=path,
+    )
 
     wait_s = cfg.scheduler.queue_max_age_ms / 1000.0
     try:
@@ -87,12 +187,28 @@ async def chat_completions(request: Request) -> Response:
     except TimeoutError:
         pending.cancelled.set()
         observe_rejection(RejectionReason.QUEUE_AGE)
+        log_gateway_event(
+            logger,
+            logging.WARN,
+            "request_rejected",
+            request_id=rid,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=path,
+            error={
+                "type": "QueueTimeout",
+                "message": "dispatch wait exceeded queue_max_age_ms",
+                "code": RejectionReason.QUEUE_AGE.value,
+                "retryable": True,
+            },
+        )
         raise HTTPException(
             status_code=503,
             detail={"reason": str(RejectionReason.QUEUE_AGE.value), "request_id": rid},
         ) from None
     except ScheduleError as e:
         observe_rejection(RejectionReason.NO_BACKEND)
+        # request_rejected for queue age is logged in dispatcher._reject
         raise HTTPException(
             status_code=503,
             detail={
@@ -109,6 +225,8 @@ async def chat_completions(request: Request) -> Response:
         pending=pending,
         initial=target,
         rid=rid,
+        trace_id=trace_id,
+        session_id=session_id,
     )
 
 

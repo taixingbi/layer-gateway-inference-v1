@@ -13,6 +13,7 @@ from app.backends import health as health_mod
 from app.backends.registry import BackendRegistry
 from app.core.config import GatewayConfig
 from app.core.types import BackendTarget, ClassifyResult, PendingRequest, RequestClass
+from app.core.logging import log_gateway_event
 from app.metrics import prometheus as prom
 from app.scheduler import scoring
 
@@ -108,6 +109,16 @@ def _upstream_unreachable_detail(
     }
 
 
+def _transport_error_payload(exc: Exception, backend: str) -> dict[str, Any]:
+    kind = _transport_error_detail(exc)
+    return {
+        "type": type(exc).__name__,
+        "message": str(exc),
+        "code": kind,
+        "retryable": True,
+    }
+
+
 async def proxy_chat_completion(
     *,
     client: httpx.AsyncClient,
@@ -116,6 +127,8 @@ async def proxy_chat_completion(
     pending: PendingRequest,
     initial: BackendTarget,
     rid: str,
+    trace_id: str | None = None,
+    session_id: str | None = None,
 ) -> Response | StreamingResponse:
     timeout = httpx.Timeout(cfg.server.request_timeout_ms / 1000.0)
     headers = _filter_headers(pending.client_headers)
@@ -132,6 +145,17 @@ async def proxy_chat_completion(
         st = registry.get(target.name)
         url = f"{target.base_url}{path}{query}"
         t0 = time.monotonic()
+        log_gateway_event(
+            logger,
+            logging.INFO,
+            "proxy_start",
+            request_id=rid,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=path,
+            backend=target.name,
+            gateway_meta={"attempt": attempts},
+        )
 
         try:
             if pending.classify.stream:
@@ -144,6 +168,8 @@ async def proxy_chat_completion(
                     headers=headers,
                     timeout=timeout,
                     rid=rid,
+                    trace_id=trace_id,
+                    session_id=session_id,
                     transport_attempts=transport_attempts,
                 )
 
@@ -158,6 +184,18 @@ async def proxy_chat_completion(
                     st.update_success(ttft_ms=min(e2e_ms, 10_000.0), e2e_ms=e2e_ms)
                 _release_dispatch(registry, target.name, pending.classify)
                 prom.request_latency_ms.observe(e2e_ms)
+                log_gateway_event(
+                    logger,
+                    logging.INFO,
+                    "proxy_response",
+                    request_id=rid,
+                    trace_id=trace_id,
+                    session_id=session_id,
+                    path=path,
+                    backend=target.name,
+                    latency_ms=e2e_ms,
+                    status_code=resp.status_code,
+                )
                 return Response(
                     content=resp.content, status_code=resp.status_code, headers=dict(resp.headers)
                 )
@@ -171,6 +209,18 @@ async def proxy_chat_completion(
 
             if attempts < cfg.retry.max_attempts and retryable:
                 prom.gateway_request_retries_total.inc()
+                log_gateway_event(
+                    logger,
+                    logging.WARN,
+                    "proxy_retry",
+                    request_id=rid,
+                    trace_id=trace_id,
+                    session_id=session_id,
+                    path=path,
+                    backend=target.name,
+                    status_code=resp.status_code,
+                    gateway_meta={"reason": "upstream_status", "attempt": attempts},
+                )
                 _release_dispatch(registry, target.name, pending.classify)
                 nxt = _pick_retry_target(registry, cfg, pending.classify, avoid=target.name)
                 if nxt:
@@ -178,6 +228,18 @@ async def proxy_chat_completion(
                     continue
 
             _release_dispatch(registry, target.name, pending.classify)
+            log_gateway_event(
+                logger,
+                logging.INFO,
+                "proxy_response",
+                request_id=rid,
+                trace_id=trace_id,
+                session_id=session_id,
+                path=path,
+                backend=target.name,
+                latency_ms=e2e_ms,
+                status_code=resp.status_code,
+            )
             return Response(
                 content=resp.content, status_code=resp.status_code, headers=dict(resp.headers)
             )
@@ -196,21 +258,74 @@ async def proxy_chat_completion(
             if st:
                 health_mod.on_failure(st, registry.health_config())
                 st.update_failure()
+            log_gateway_event(
+                logger,
+                logging.WARN,
+                "proxy_transport_error",
+                request_id=rid,
+                trace_id=trace_id,
+                session_id=session_id,
+                path=path,
+                backend=target.name,
+                error=_transport_error_payload(e, target.name),
+            )
             if attempts < cfg.retry.max_attempts:
                 prom.gateway_request_retries_total.inc()
+                log_gateway_event(
+                    logger,
+                    logging.WARN,
+                    "proxy_retry",
+                    request_id=rid,
+                    trace_id=trace_id,
+                    session_id=session_id,
+                    path=path,
+                    backend=target.name,
+                    gateway_meta={"reason": "transport", "attempt": attempts},
+                )
                 _release_dispatch(registry, target.name, pending.classify)
                 nxt = _pick_retry_target(registry, cfg, pending.classify, avoid=target.name)
                 if nxt:
                     target = nxt
                     continue
             _release_dispatch(registry, target.name, pending.classify)
-            logger.warning("[%s] proxy error %s: %s", rid, target.name, e)
+            log_gateway_event(
+                logger,
+                logging.ERROR,
+                "proxy_final_failure",
+                request_id=rid,
+                trace_id=trace_id,
+                session_id=session_id,
+                path=path,
+                backend=target.name,
+                error={
+                    "type": type(e).__name__,
+                    "message": str(e),
+                    "code": _transport_error_detail(e),
+                    "retryable": False,
+                },
+            )
             raise HTTPException(
                 status_code=504,
                 detail=_upstream_unreachable_detail(rid, transport_attempts),
             ) from e
 
     _release_dispatch(registry, target.name, pending.classify)
+    log_gateway_event(
+        logger,
+        logging.ERROR,
+        "proxy_final_failure",
+        request_id=rid,
+        trace_id=trace_id,
+        session_id=session_id,
+        path=path,
+        backend=target.name,
+        error={
+            "type": "RetryExhausted",
+            "message": str(last_error or "retry exhausted"),
+            "code": "retry_exhausted",
+            "retryable": False,
+        },
+    )
     raise HTTPException(
         status_code=502,
         detail={
@@ -231,8 +346,11 @@ async def _proxy_streaming(
     headers: dict[str, str],
     timeout: httpx.Timeout,
     rid: str,
+    trace_id: str | None,
+    session_id: str | None,
     transport_attempts: list[dict[str, Any]],
 ) -> StreamingResponse:
+    path = pending.path or "/v1/chat/completions"
     t0_req = time.monotonic()
     st = registry.get(target.name)
     try:
@@ -258,6 +376,33 @@ async def _proxy_streaming(
             st.update_failure()
         prom.gateway_request_errors_total.labels(backend=target.name).inc()
         _release_dispatch(registry, target.name, pending.classify)
+        log_gateway_event(
+            logger,
+            logging.WARN,
+            "proxy_transport_error",
+            request_id=rid,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=path,
+            backend=target.name,
+            error=_transport_error_payload(e, target.name),
+        )
+        log_gateway_event(
+            logger,
+            logging.ERROR,
+            "proxy_final_failure",
+            request_id=rid,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=path,
+            backend=target.name,
+            error={
+                "type": type(e).__name__,
+                "message": str(e),
+                "code": _transport_error_detail(e),
+                "retryable": False,
+            },
+        )
         raise HTTPException(
             status_code=504,
             detail=_upstream_unreachable_detail(rid, transport_attempts),
@@ -274,17 +419,60 @@ async def _proxy_streaming(
             st.update_failure()
         prom.gateway_request_errors_total.labels(backend=target.name).inc()
         _release_dispatch(registry, target.name, pending.classify)
+        log_gateway_event(
+            logger,
+            logging.INFO,
+            "proxy_response",
+            request_id=rid,
+            trace_id=trace_id,
+            session_id=session_id,
+            path=path,
+            backend=target.name,
+            latency_ms=ttft_ms,
+            status_code=resp.status_code,
+        )
         return Response(content=body, status_code=resp.status_code)
 
     if st:
         health_mod.on_success(st, registry.health_config())
         st.update_success(ttft_ms=ttft_ms, e2e_ms=ttft_ms)
 
+    log_gateway_event(
+        logger,
+        logging.INFO,
+        "proxy_response",
+        request_id=rid,
+        trace_id=trace_id,
+        session_id=session_id,
+        path=path,
+        backend=target.name,
+        latency_ms=ttft_ms,
+        status_code=resp.status_code,
+        gateway_meta={"streaming": True, "phase": "headers"},
+    )
+
+    first_byte = [True]
+
     async def wrapped() -> AsyncIterator[bytes]:
         total_t0 = time.monotonic()
         try:
             async for chunk in resp.aiter_bytes():
                 if chunk:
+                    if first_byte[0]:
+                        first_byte[0] = False
+                        ttfb_ms = (time.monotonic() - t0_req) * 1000
+                        log_gateway_event(
+                            logger,
+                            logging.INFO,
+                            "stream_first_byte",
+                            request_id=rid,
+                            trace_id=trace_id,
+                            session_id=session_id,
+                            path=path,
+                            backend=target.name,
+                            latency_ms=ttfb_ms,
+                            status_code=resp.status_code,
+                        )
                     yield chunk
         finally:
             await resp.aclose()
@@ -293,6 +481,18 @@ async def _proxy_streaming(
                 st.update_success(ttft_ms=None, e2e_ms=e2e)
             _release_dispatch(registry, target.name, pending.classify)
             prom.request_latency_ms.observe(e2e)
+            log_gateway_event(
+                logger,
+                logging.INFO,
+                "stream_complete",
+                request_id=rid,
+                trace_id=trace_id,
+                session_id=session_id,
+                path=path,
+                backend=target.name,
+                latency_ms=e2e,
+                status_code=resp.status_code,
+            )
 
     out_headers = {
         k: v

@@ -10,6 +10,7 @@ from app.core.config import GatewayConfig
 from app.core.types import BackendTarget, PendingRequest, RejectionReason, RequestClass
 from app.metrics.prometheus import gateway_dispatch_total, observe_rejection
 from app.metrics.sync import sync_backend_gauges
+from app.core.logging import log_gateway_event
 from app.queue.admission_queue import AdmissionQueue
 from app.scheduler import scoring
 
@@ -88,6 +89,15 @@ async def _dispatch_tick(
         gateway_dispatch_total.labels(backend=chosen.name).inc()
         target = BackendTarget(name=chosen.name, base_url=chosen.base_url)
         pending.dispatch_future.set_result(target)
+        log_gateway_event(
+            logger,
+            logging.INFO,
+            "request_dispatched",
+            request_id=pending.request_id,
+            path=pending.path,
+            backend=chosen.name,
+            gateway_meta={"request_class": pending.classify.req_class.value},
+        )
 
     if requeue:
         await queue.requeue_front(requeue)
@@ -95,4 +105,17 @@ async def _dispatch_tick(
 
 def _reject(pending: PendingRequest, exc: Exception) -> None:
     if not pending.dispatch_future.done():
+        log_gateway_event(
+            logger,
+            logging.WARN,
+            "request_rejected",
+            request_id=pending.request_id,
+            path=pending.path,
+            error={
+                "type": type(exc).__name__,
+                "message": str(exc),
+                "code": "queue_age_exceeded",
+                "retryable": True,
+            },
+        )
         pending.dispatch_future.set_exception(exc)
