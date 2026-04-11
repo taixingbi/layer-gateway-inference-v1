@@ -118,7 +118,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-Optional — ship logs to **Grafana Loki** ([tb-loki-central-logger](https://pypi.org/project/tb-loki-central-logger/)): copy `.env.example` to `.env` in the process working directory and set `GRAFANA_CLOUD_URL`, `GRAFANA_CLOUD_USER`, and `GRAFANA_CLOUD_API_KEY` (or legacy `GRAFANA_CLOUD_WRITE_API_KEY`). Without these, the gateway still logs JSON to stderr only.
+The gateway writes **structured JSON** (one object per line) to **standard output**. In Kubernetes, a log agent such as **Grafana Alloy** (often as a DaemonSet) can tail pod logs and forward them to **Loki** without any in-process Loki client. Optional `LOG_TIMEZONE` (IANA name, default `UTC`) controls the `ts` field; see `.env.example`.
 
 3. Run gateway
 uvicorn app.main:app --host 0.0.0.0 --port 8010
@@ -144,7 +144,7 @@ docker run --rm -p 8010:8010 \
   layer-gateway-inference-v1
 ```
 
-Place **`Grafana Loki`** (and any other) vars in **`.env`** next to your run command (see `.env.example`). You can omit `--env-file .env` if you only need the baked-in `config.yaml` and no Loki.
+You can pass **`.env`** for optional vars such as `LOG_TIMEZONE` or `ENV` (see `.env.example`). Omit `--env-file .env` if the defaults are enough.
 
 Or with Compose:
 
@@ -156,7 +156,7 @@ Uncomment the `volumes` entry in `docker-compose.yml` when you need a host-speci
 
 ### Pull and run from Docker Hub
 
-On the target host, keep a **`config.yaml`** (backend NodePort URLs, etc.) and **`.env`** (Grafana / Loki) in the directory you run from, then:
+On the target host, keep a **`config.yaml`** (backend NodePort URLs, etc.) in the directory you run from, and optionally **`.env`**, then:
 
 ```bash
 ssh tb@192.168.86.179

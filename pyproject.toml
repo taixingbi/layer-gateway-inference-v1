@@ -16,7 +16,6 @@ dependencies = [
   "pydantic-settings>=2.6.0",
   "pyyaml>=6.0.2",
   "prometheus-client>=0.21.0",
-  "tb-loki-central-logger>=0.2.6",
 ]
 
 [project.optional-dependencies]
