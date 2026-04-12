@@ -129,6 +129,7 @@ curl http://192.168.86.179:8010/v1/chat/completions \
     "model": "Qwen/Qwen2.5-7B-Instruct",
     "messages": [{"role":"user","content":"Hello"}]
   }'
+  
 
 If you see **504** with `connect` / *connection attempts failed*, the gateway could not reach the URLs in `config.yaml`. This repo expects two NodePort (or equivalent) endpoints, e.g. `http://192.168.86.173:30080` and `http://192.168.86.176:30080` — adjust to your LAN. Verify with `curl -sS http://192.168.86.173:30080/v1/models` (and the second node).
 
@@ -170,6 +171,28 @@ sudo docker run -d --restart unless-stopped \
   taixingbi/layer-gateway-inference-v1:latest
 ```
 
+### test with k3s
+```bash
+curl http://192.168.86.179:30180/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "Qwen/Qwen2.5-7B-Instruct", "messages":
+      [{"role": "user", "content": "where is jersey city"}],
+      "max_tokens": 50}'           
+
+curl http://192.168.86.179:30180/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Request-Id: request-id-1" \
+  -H "X-Trace-Id: trace-id-1" \
+  -H "X-Session-Id: session-id-1" \
+  -d '{
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "messages": [
+      {"role": "user", "content": "where is jersey city"}
+    ],
+    "max_tokens": 50
+  }'
+```
+
 ### CI: publish to Docker Hub on `main`
 
 Same pattern as [layer-gateway-embed-v1](https://github.com/taixingbi/layer-gateway-embed-v1): workflow `.github/workflows/docker-push.yml` runs on every push to **`main`** (and manual **workflow_dispatch**). Add repository secrets **`DOCKERHUB_USERNAME`** and **`DOCKERHUB_TOKEN`**. Images are tagged `latest` and `${{ github.sha }}`.
@@ -206,3 +229,4 @@ request size
 🧵 session affinity (chat continuity)
 ☁️ hybrid routing (local GPU + cloud fallback)
 🧪 A/B testing / canary routing
+
