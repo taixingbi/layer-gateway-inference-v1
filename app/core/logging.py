@@ -8,7 +8,19 @@ import uuid
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def _load_log_timezone(name: str) -> ZoneInfo:
+    """Resolve LOG_TIMEZONE; slim images need PyPI ``tzdata`` (see pyproject)."""
+    raw = (name or "UTC").strip()
+    # "EST" is not a stable IANA key everywhere; US Eastern is the usual intent.
+    if raw.upper() in ("EST", "EDT") or raw == "US/Eastern":
+        raw = "America/New_York"
+    try:
+        return ZoneInfo(raw)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
 
 # Legacy JSON key order (non-gateway lines)
 _JSON_CONTEXT_KEYS = ("request_id", "session_id", "method", "path", "status")
@@ -77,11 +89,11 @@ class JsonLogFormatter(logging.Formatter):
     def __init__(
         self,
         *,
-        timezone: str = "EST",
+        timezone: str = "America/New_York",
         extra_fields: Sequence[str] = (),
     ):
         super().__init__()
-        self._tz = ZoneInfo(timezone)
+        self._tz = _load_log_timezone(timezone)
         self._extras = tuple(extra_fields)
 
     def format(self, record: logging.LogRecord) -> str:
@@ -147,7 +159,7 @@ def setup_logging(level: int = logging.INFO) -> None:
     if root.handlers:
         return
 
-    tz = os.environ.get("LOG_TIMEZONE", "EST")
+    tz = os.environ.get("LOG_TIMEZONE", "America/New_York")
     fmt = JsonLogFormatter(timezone=tz, extra_fields=("backend",))
 
     root.setLevel(level)
