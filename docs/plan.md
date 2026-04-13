@@ -4,6 +4,16 @@
 
 Redesign the gateway from a simple per-request scorer/proxy into a **lightweight request-shaping scheduler** that improves multi-GPU utilization, reduces one-node-at-a-time wave patterns, and preserves good latency under load.
 
+```mermaid
+flowchart LR
+    IN[Incoming Requests] --> Q[Bounded Admission Queue]
+    Q --> D[Dispatch Loop]
+    D --> F[Eligibility Filters]
+    F --> S[Scoring + Selection]
+    S --> P[Proxy to vLLM Backends]
+    P --> OBS[Metrics + Structured Logs]
+```
+
 The current repository already positions the project as a FastAPI-based, GPU-aware routing gateway for vLLM on k3s, with request-level routing, load-aware scheduling, retries, circuit breaking, and health tracking. It also explicitly notes that default Kubernetes Services are connection-level while vLLM inference benefits from request-level routing, and its current routing formula is based on inflight requests, queue p95, TTFT p95, and error rate. citeturn914425view0
 
 ## Why Redesign

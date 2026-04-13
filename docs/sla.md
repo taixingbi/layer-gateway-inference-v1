@@ -34,6 +34,17 @@ Gateway-side failure includes:
 - `gateway_queue_age_ms` should remain **< queue_max_age_ms** during steady state.
 - `gateway_rejections_total{reason="queue_full"}` and `{reason="queue_age"}` should be near zero during normal operation.
 
+```mermaid
+flowchart LR
+    A[Traffic] --> B{Availability SLO 99.9%}
+    A --> C{Latency SLO}
+    A --> D{Queue SLO}
+    C --> C1[P95 <= 2500ms]
+    C --> C2[P99 <= 5000ms]
+    D --> D1[queue_age_ms < queue_max_age_ms]
+    D --> D2[queue_full/queue_age rejections near 0]
+```
+
 ## 3) Error Budget
 
 For 99.9% monthly availability, allowed failure budget is approximately:
@@ -46,6 +57,16 @@ If budget burn is high, prioritize:
 - reducing retries caused by unhealthy backends
 - lowering queue pressure
 - draining unstable nodes
+
+```mermaid
+flowchart TD
+    SLO[99.9% monthly availability] --> EB[0.1% error budget]
+    EB --> BURN{burn rate high?}
+    BURN -- yes --> ACT1[reduce retries]
+    BURN -- yes --> ACT2[reduce queue pressure]
+    BURN -- yes --> ACT3[drain unstable backends]
+    BURN -- no --> KEEP[maintain baseline]
+```
 
 ## 4) How to Measure
 
