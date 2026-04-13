@@ -20,6 +20,21 @@ The gateway is a single FastAPI service composed of these major subsystems:
 - Proxy client (non-streaming + streaming)
 - Logging and metrics pipeline
 
+```mermaid
+flowchart LR
+    C[Client] -->|POST /v1/chat/completions| API[FastAPI API Layer]
+    API --> Q[AdmissionQueue]
+    Q --> S[Scheduler + Scoring]
+    S --> R[BackendRegistry + Health]
+    S --> P[Proxy Client]
+    P --> B1[vLLM Backend 1]
+    P --> B2[vLLM Backend 2]
+    API --> L[Structured Logs]
+    API --> M[Prometheus Metrics]
+    S --> M
+    P --> M
+```
+
 ## 3. Components
 
 ### 3.1 API Layer
@@ -125,6 +140,56 @@ Eligibility checks include:
 7. On success, response is returned and latency metrics are updated.
 8. On failure, retry/circuit/error signals are applied and final error returned if exhausted.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant API as API Routes
+    participant Queue as AdmissionQueue
+    participant Sched as Scheduler
+    participant Proxy as Proxy Client
+    participant Backend as vLLM Backend
+
+    Client->>API: POST /v1/chat/completions
+    API->>API: Validate + classify + log request_received
+    API->>Queue: enqueue(PendingRequest)
+    Sched->>Queue: pop_batch()
+    Sched->>Sched: filter eligible + score + choose backend
+    Sched-->>API: dispatch_future.set_result(target)
+    API->>Proxy: proxy_chat_completion(target)
+    Proxy->>Backend: upstream request
+    alt success
+        Backend-->>Proxy: 2xx response
+        Proxy-->>API: response
+        API-->>Client: response body
+    else retryable failure
+        Backend-->>Proxy: 5xx / timeout / connect error
+        Proxy->>Proxy: retry (if attempts remain)
+        Proxy->>Backend: retry to alternative backend
+        Backend-->>Proxy: response or final failure
+        Proxy-->>API: response or HTTPException
+        API-->>Client: success or 5xx
+    end
+```
+
+### 4.1 Dispatch Decision Flow
+
+```mermaid
+flowchart TD
+    A[PendingRequest from queue] --> B{cancelled or already resolved?}
+    B -- yes --> Z[skip]
+    B -- no --> C{age > queue_max_age_ms?}
+    C -- yes --> R1[reject queue_age]
+    C -- no --> D[collect eligible backends]
+    D --> E{any eligible?}
+    E -- no --> F[requeue_front]
+    E -- yes --> G[pick_backend by score]
+    G --> H{chosen backend exists?}
+    H -- no --> F
+    H -- yes --> I[on_request_start + inflight++]
+    I --> J[set dispatch_future(target)]
+```
+
 ## 5. Reliability Design
 
 ### 5.1 Backpressure
@@ -143,12 +208,36 @@ State machine:
 
 Transitions driven by consecutive failures and cooldown timing.
 
+```mermaid
+stateDiagram-v2
+    [*] --> closed
+    closed --> open: consecutive failures >= threshold
+    open --> half_open: cooldown elapsed
+    half_open --> closed: probe success
+    half_open --> open: probe failure
+```
+
 ### 5.3 Retry Policy
 
 - retries capped by `retry.max_attempts`
 - retryable statuses from `retry.retryable_statuses`
 - transport errors are treated as retry candidates
 - best-effort switch to alternative backend
+
+```mermaid
+flowchart TD
+    A[proxy attempt N] --> B{response < 400?}
+    B -- yes --> OK[return success]
+    B -- no --> C{retryable status or transport error?}
+    C -- no --> FAIL[return failure]
+    C -- yes --> D{N < max_attempts?}
+    D -- no --> FAIL
+    D -- yes --> E[pick alternate backend]
+    E --> F{backend found?}
+    F -- no --> FAIL
+    F -- yes --> G[attempt N+1]
+    G --> B
+```
 
 ## 6. Configuration Model
 
@@ -166,6 +255,15 @@ Config is loaded from:
 1. explicit path argument, else
 2. `GATEWAY_CONFIG` env var, else
 3. default `config.yaml`
+
+```mermaid
+flowchart LR
+    A[load_gateway_config(path)] --> B{path passed?}
+    B -- yes --> P[use explicit path]
+    B -- no --> C{GATEWAY_CONFIG set?}
+    C -- yes --> E[use env path]
+    C -- no --> D[use config.yaml]
+```
 
 ## 7. Logging and Trace Context
 
