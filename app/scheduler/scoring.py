@@ -1,3 +1,5 @@
+"""Score backends for dispatch: load, latency, errors, hot-spot, overload, class mix."""
+
 from __future__ import annotations
 
 from app.backends.state import BackendRuntimeState
@@ -19,6 +21,7 @@ def hot_penalty(
     total_dispatches: int,
     routing: RoutingConfig,
 ) -> float:
+    """Penalize backends that take too large a share of recent dispatches (anti hotspot)."""
     if total_dispatches <= 0:
         return 0.0
     share = state.dispatch_share(routing.hot_window_sec)[0] / total_dispatches
@@ -29,6 +32,7 @@ def hot_penalty(
 
 
 def overload_penalty(state: BackendRuntimeState, routing: RoutingConfig) -> float:
+    """Soft penalty once inflight exceeds soft_limit (steer before hard_limit)."""
     if state.inflight <= state.soft_limit:
         return 0.0
     over = state.inflight - state.soft_limit
@@ -41,6 +45,8 @@ def score_backend(
     classify: RequestClass,
     total_dispatches_window: int,
 ) -> float:
+    """Weighted cost for one backend; lower is better. Used by ``pick_backend``."""
+    # ``ewma_queue_ms`` is reserved for a per-backend queue signal; it is not updated yet.
     s = (
         routing.inflight_weight * float(state.inflight)
         + routing.queue_weight * state.ewma_queue_ms
@@ -59,6 +65,7 @@ def pick_backend(
     routing: RoutingConfig,
     classify: RequestClass,
 ) -> BackendRuntimeState | None:
+    """Choose eligible backend with minimum ``score_backend`` (tie-break: sort order)."""
     if not candidates:
         return None
     total_d = 0

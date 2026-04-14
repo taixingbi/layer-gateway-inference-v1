@@ -1,3 +1,5 @@
+"""Tests for backend scoring and pick_backend selection."""
+
 from app.backends.state import BackendRuntimeState
 from app.core.config import RoutingConfig
 from app.core.types import RequestClass

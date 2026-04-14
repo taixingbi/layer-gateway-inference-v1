@@ -1,3 +1,5 @@
+"""Tests for backend circuit breaker behavior."""
+
 import time
 
 from app.backends import health as health_mod

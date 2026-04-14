@@ -1,3 +1,5 @@
+"""Classify chat requests (size/streaming) from JSON body for scheduling hints."""
+
 from __future__ import annotations
 
 import json
@@ -7,6 +9,7 @@ from app.core.types import ClassifyResult, RequestClass
 
 
 def _rough_tokens_from_messages(messages: list[dict[str, Any]]) -> int:
+    """Cheap token estimate: ~4 characters per token (not a real tokenizer)."""
     n = 0
     for m in messages:
         content = m.get("content", "")
@@ -20,6 +23,7 @@ def _rough_tokens_from_messages(messages: list[dict[str, Any]]) -> int:
 
 
 def classify_chat_body(body: bytes) -> ClassifyResult:
+    """Derive request class from JSON: prompt size + max_tokens (+ streaming rules)."""
     data = json.loads(body.decode("utf-8"))
     messages: list[dict[str, Any]] = list(data.get("messages") or [])
     est = _rough_tokens_from_messages(messages)
@@ -36,8 +40,10 @@ def classify_chat_body(body: bytes) -> ClassifyResult:
     else:
         mname = None
 
+    # Rough total work: prompt estimate + generation cap (default 512 if omitted).
     total_est = est + (max_tokens or 512)
 
+    # Bucket thresholds (heuristic): streaming long jobs are tracked separately.
     if stream and total_est > 4000:
         req_class = RequestClass.STREAMING_LONG
     elif total_est < 1500:

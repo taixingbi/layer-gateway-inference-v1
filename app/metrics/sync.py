@@ -1,3 +1,5 @@
+"""Push BackendRuntimeState fields into labeled gauges for Prometheus scrape."""
+
 from __future__ import annotations
 
 from app.backends.registry import BackendRegistry
@@ -6,6 +8,7 @@ from app.metrics import prometheus as prom
 
 
 def sync_backend_gauges(registry: BackendRegistry) -> None:
+    """Copy per-backend runtime fields into labeled Prometheus gauges."""
     for s in registry.all_states():
         prom.gateway_backend_inflight.labels(backend=s.name).set(s.inflight)
         prom.gateway_backend_ewma_ttft_ms.labels(backend=s.name).set(s.ewma_ttft_ms)

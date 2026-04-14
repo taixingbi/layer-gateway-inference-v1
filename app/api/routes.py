@@ -1,3 +1,5 @@
+"""HTTP API: chat completions, health check, and Prometheus scrape endpoint."""
+
 from __future__ import annotations
 
 import asyncio
@@ -24,11 +26,13 @@ logger = logging.getLogger(__name__)
 
 @router.get("/healthz")
 async def healthz() -> dict[str, str]:
+    """Liveness probe: process is up."""
     return {"status": "ok"}
 
 
 @router.get("/metrics")
 async def metrics(request: Request) -> Response:
+    """Prometheus scrape: registry snapshot + latest in-memory backend gauges."""
     from app.metrics.prometheus import metrics_response
 
     body, ctype = metrics_response()
@@ -38,6 +42,7 @@ async def metrics(request: Request) -> Response:
 
 @router.api_route("/v1/chat/completions", methods=["POST"])
 async def chat_completions(request: Request) -> Response:
+    """OpenAI-compatible chat: validate, enqueue, wait for dispatch, proxy to vLLM."""
     rid = request.headers.get("x-request-id") or new_request_id()
     trace_id = request.headers.get("x-trace-id") or request.headers.get("X-Trace-Id")
     session_id = request.headers.get("x-session-id") or request.headers.get("X-Session-Id")

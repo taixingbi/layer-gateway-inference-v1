@@ -1,3 +1,5 @@
+"""Shared domain types: circuit/rejection enums, classify result, pending request."""
+
 from __future__ import annotations
 
 import asyncio

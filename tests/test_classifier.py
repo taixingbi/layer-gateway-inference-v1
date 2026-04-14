@@ -1,3 +1,5 @@
+"""Tests for chat body classification (request class buckets)."""
+
 import json
 
 from app.core.types import RequestClass

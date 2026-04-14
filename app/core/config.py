@@ -1,3 +1,5 @@
+"""Gateway YAML configuration: models and ``load_gateway_config`` loader."""
+
 from __future__ import annotations
 
 import os
@@ -62,6 +64,7 @@ class GatewayConfig(BaseModel):
 
 
 def load_gateway_config(path: str | Path | None = None) -> GatewayConfig:
+    """Load and validate ``config.yaml`` (or ``path`` / ``GATEWAY_CONFIG``)."""
     p = Path(path or os.environ.get("GATEWAY_CONFIG", "config.yaml"))
     raw = yaml.safe_load(p.read_text())
     return GatewayConfig.model_validate(raw)

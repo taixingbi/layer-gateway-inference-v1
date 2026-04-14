@@ -1,3 +1,5 @@
+"""Circuit breaker: open/half-open/closed transitions and probe limits per backend."""
+
 from __future__ import annotations
 
 import logging
@@ -12,11 +14,13 @@ _circuit_logger = logging.getLogger(__name__)
 
 
 def on_request_start(state: BackendRuntimeState, health: HealthConfig) -> None:
+    """Count probes dispatched while circuit is half-open (limits concurrent probes)."""
     if state.circuit == CircuitState.HALF_OPEN:
         state.half_open_probes += 1
 
 
 def on_success(state: BackendRuntimeState, _health: HealthConfig) -> None:
+    """Reset failure streak; half-open success closes the circuit."""
     state.consecutive_failures = 0
     if state.circuit == CircuitState.HALF_OPEN:
         state.circuit = CircuitState.CLOSED
@@ -34,6 +38,7 @@ def on_failure(
     state: BackendRuntimeState,
     health: HealthConfig,
 ) -> None:
+    """Record failure; may open circuit from closed or from failed half-open probe."""
     state.consecutive_failures += 1
     if state.circuit == CircuitState.HALF_OPEN:
         state.circuit = CircuitState.OPEN
@@ -65,6 +70,7 @@ def on_failure(
 
 
 def maybe_transition_from_open(state: BackendRuntimeState, health: HealthConfig) -> None:
+    """After cooldown, move OPEN → HALF_OPEN to allow limited recovery traffic."""
     if state.circuit != CircuitState.OPEN or state.circuit_opened_at_monotonic is None:
         return
     elapsed_ms = (time.monotonic() - state.circuit_opened_at_monotonic) * 1000
@@ -82,6 +88,7 @@ def maybe_transition_from_open(state: BackendRuntimeState, health: HealthConfig)
 
 
 def half_open_allow_dispatch(state: BackendRuntimeState, health: HealthConfig) -> bool:
+    """True if half-open backend may accept another probe (under max inflight probes)."""
     if state.circuit != CircuitState.HALF_OPEN:
         return True
     return state.half_open_probes < health.half_open_max_inflight

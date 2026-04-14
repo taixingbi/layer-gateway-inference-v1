@@ -1,3 +1,5 @@
+"""Prometheus metric objects and helpers (exposition via ``/metrics``)."""
+
 from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram, generate_latest
@@ -71,8 +73,10 @@ request_latency_ms = Histogram(
 
 
 def metrics_response() -> tuple[bytes, str]:
+    """Return Prometheus text exposition body and Content-Type."""
     return generate_latest(), CONTENT_TYPE_LATEST
 
 
 def observe_rejection(reason: RejectionReason) -> None:
+    """Increment rejection counter for queue/schedule reasons."""
     gateway_rejections_total.labels(reason=str(reason.value)).inc()

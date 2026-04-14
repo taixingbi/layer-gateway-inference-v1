@@ -1,3 +1,5 @@
+"""FastAPI app factory, process lifespan, shared clients, and scheduler wiring."""
+
 from __future__ import annotations
 
 import asyncio
@@ -20,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Startup: config, registry, queue, httpx client, background scheduler. Shutdown: cancel + close."""
     cfg = load_gateway_config()
     registry = BackendRegistry(cfg)
     queue = AdmissionQueue(cfg.scheduler.queue_max_size)
@@ -61,6 +64,7 @@ app.include_router(router)
 
 
 def main() -> None:
+    """CLI entry: run uvicorn with host/port from config."""
     import uvicorn
 
     cfg = load_gateway_config()

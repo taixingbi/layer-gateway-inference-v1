@@ -1,3 +1,5 @@
+"""HTTP proxy to vLLM backends: non-stream/stream, retries, health and latency updates."""
+
 from __future__ import annotations
 
 import logging
@@ -32,6 +34,7 @@ _SAFE_HEADER = frozenset(
 
 
 def _filter_headers(h: dict[str, str]) -> dict[str, str]:
+    """Forward safe client headers only (allowlist + ``x-*`` custom headers)."""
     out: dict[str, str] = {}
     for k, v in h.items():
         lk = k.lower()
@@ -45,6 +48,7 @@ def _release_dispatch(
     backend_name: str,
     classify: ClassifyResult,
 ) -> None:
+    """Decrement gateway-side inflight (and large_inflight) when a dispatch ends."""
     st = registry.get(backend_name)
     if not st:
         return
@@ -59,6 +63,7 @@ def _pick_retry_target(
     classify: ClassifyResult,
     avoid: str,
 ) -> BackendTarget | None:
+    """Pick another healthy backend for retry; bumps inflight on the new target."""
     eligible = [
         s
         for s in registry.all_states()
@@ -83,10 +88,12 @@ async def _non_stream_once(
     headers: dict[str, str],
     timeout: httpx.Timeout,
 ) -> httpx.Response:
+    """Single blocking POST; full body buffered in memory."""
     return await client.post(url, content=body, headers=headers, timeout=timeout)
 
 
 def _should_retry_status(code: int, cfg: GatewayConfig) -> bool:
+    """True if HTTP status is listed in config ``retry.retryable_statuses``."""
     return code in set(cfg.retry.retryable_statuses)
 
 
@@ -101,6 +108,7 @@ def _transport_error_detail(exc: Exception) -> str:
 def _upstream_unreachable_detail(
     rid: str, attempts: list[dict[str, Any]]
 ) -> dict[str, Any]:
+    """JSON body for 504 after repeated connect/timeout failures."""
     return {
         "message": "upstream timeout or connection error",
         "request_id": rid,
@@ -110,6 +118,7 @@ def _upstream_unreachable_detail(
 
 
 def _transport_error_payload(exc: Exception, backend: str) -> dict[str, Any]:
+    """Structured error dict for logs (transport failures)."""
     kind = _transport_error_detail(exc)
     return {
         "type": type(exc).__name__,
@@ -130,6 +139,7 @@ async def proxy_chat_completion(
     trace_id: str | None = None,
     session_id: str | None = None,
 ) -> Response | StreamingResponse:
+    """Proxy to vLLM with retries; updates health, metrics, and structured logs."""
     timeout = httpx.Timeout(cfg.server.request_timeout_ms / 1000.0)
     headers = _filter_headers(pending.client_headers)
     path = pending.path or "/v1/chat/completions"
@@ -350,6 +360,7 @@ async def _proxy_streaming(
     session_id: str | None,
     transport_attempts: list[dict[str, Any]],
 ) -> StreamingResponse:
+    """Stream response bytes; release inflight after the client finishes reading."""
     path = pending.path or "/v1/chat/completions"
     t0_req = time.monotonic()
     st = registry.get(target.name)

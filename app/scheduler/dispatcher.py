@@ -1,3 +1,5 @@
+"""Scheduler loop: dequeue pending work, assign backends, emit dispatch metrics/logs."""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,6 +29,7 @@ async def run_scheduler_loop(
     queue: AdmissionQueue,
     stop: asyncio.Event,
 ) -> None:
+    """Periodic tick: advance circuits, dispatch queue batch, export backend gauges."""
     tick_s = cfg.scheduler.tick_ms / 1000.0
     max_age_s = cfg.scheduler.queue_max_age_ms / 1000.0
     while not stop.is_set():
@@ -51,6 +54,7 @@ async def _dispatch_tick(
     queue: AdmissionQueue,
     max_age_s: float,
 ) -> None:
+    """One scheduling pass: assign backends or requeue when none eligible."""
     batch = await queue.pop_batch(cfg.scheduler.dispatch_batch_size)
     if not batch:
         return
@@ -104,6 +108,7 @@ async def _dispatch_tick(
 
 
 def _reject(pending: PendingRequest, exc: Exception) -> None:
+    """Fail the waiter's future (e.g. queue age exceeded) with structured log."""
     if not pending.dispatch_future.done():
         log_gateway_event(
             logger,

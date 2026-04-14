@@ -1,3 +1,5 @@
+"""Tests for admission queue and scheduler tick interactions."""
+
 import asyncio
 import time
 

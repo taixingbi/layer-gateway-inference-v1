@@ -1,3 +1,5 @@
+"""Structured JSON logging, gateway events, and root logger setup for stdout."""
+
 from __future__ import annotations
 
 import json
@@ -38,6 +40,7 @@ _GATEWAY_OPTIONAL_STRINGS = (
 
 
 def _gateway_env() -> str:
+    """Deployment label for structured logs (``GATEWAY_ENV`` then ``ENV``, else dev)."""
     return os.environ.get("GATEWAY_ENV") or os.environ.get("ENV", "dev")
 
 
@@ -182,16 +185,20 @@ def _quiet_http_client_loggers() -> None:
 
 
 def shutdown_logging() -> None:
+    """Flush stdout handlers on shutdown (e.g. container stop)."""
     for h in logging.getLogger().handlers:
         if isinstance(h, logging.StreamHandler):
             h.flush()
 
 
 def new_request_id() -> str:
+    """UUID for ``x-request-id`` when the client does not send one."""
     return str(uuid.uuid4())
 
 
 class RequestLogAdapter(logging.LoggerAdapter):
+    """Prefix log lines with ``[request_id]`` for grep-friendly legacy logs."""
+
     def process(self, msg, kwargs):
         rid = self.extra.get("request_id", "-")
         return f"[{rid}] {msg}", kwargs

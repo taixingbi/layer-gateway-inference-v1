@@ -1,3 +1,5 @@
+"""Registry of per-backend runtime state and scheduling eligibility rules."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -9,6 +11,8 @@ from app.core.types import CircuitState
 
 
 class BackendRegistry:
+    """In-memory map of backend name → runtime state; eligibility for scheduling."""
+
     def __init__(self, cfg: GatewayConfig) -> None:
         self._health_cfg = cfg.health
         self._by_name: dict[str, BackendRuntimeState] = {}
@@ -17,6 +21,7 @@ class BackendRegistry:
 
     @staticmethod
     def _from_entry(b: BackendEntry) -> BackendRuntimeState:
+        """Build runtime row from static YAML backend entry."""
         return BackendRuntimeState(
             name=b.name,
             base_url=b.url.rstrip("/"),
@@ -26,19 +31,24 @@ class BackendRegistry:
         )
 
     def all_states(self) -> Iterator[BackendRuntimeState]:
+        """Iterate all backend runtime states (scheduling candidates)."""
         yield from self._by_name.values()
 
     def get(self, name: str) -> BackendRuntimeState | None:
+        """Lookup by backend name, or None if unknown."""
         return self._by_name.get(name)
 
     async def tick_circuits(self) -> None:
+        """Try OPEN → HALF_OPEN transitions on cooldown for every backend."""
         for s in self._by_name.values():
             health_mod.maybe_transition_from_open(s, self._health_cfg)
 
     def health_config(self) -> HealthConfig:
+        """Health thresholds shared across backends (circuit, error rate cap)."""
         return self._health_cfg
 
     def is_healthy_for_schedule(self, s: BackendRuntimeState) -> bool:
+        """True if backend may receive a new dispatch (drain/circuit/limits/errors)."""
         health_mod.maybe_transition_from_open(s, self._health_cfg)
         if s.drained:
             return False

@@ -1,3 +1,5 @@
+"""Streaming helpers wrapping httpx responses as Starlette StreamingResponse."""
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -7,6 +9,7 @@ from starlette.responses import StreamingResponse
 
 
 def sse_iterator(resp: httpx.Response) -> AsyncIterator[bytes]:
+    """Async byte iterator that closes the httpx response in ``finally``."""
     async def gen():
         try:
             async for chunk in resp.aiter_bytes():
@@ -19,6 +22,7 @@ def sse_iterator(resp: httpx.Response) -> AsyncIterator[bytes]:
 
 
 def streaming_proxy_response(resp: httpx.Response, status_code: int) -> StreamingResponse:
+    """Build Starlette streaming response, stripping hop-by-hop headers."""
     headers = {
         k: v
         for k, v in resp.headers.items()
