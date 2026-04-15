@@ -182,6 +182,7 @@ async def proxy_chat_completion(
     headers = _filter_headers(pending.client_headers)
     path = pending.path or "/v1/chat/completions"
     query = pending.query or ""
+    fallback_enabled = cfg.openai_fallback.enabled
 
     target = initial
     attempts = 0
@@ -205,7 +206,10 @@ async def proxy_chat_completion(
             session_id=session_id,
             path=path,
             backend=target.name,
-            gateway_meta={"attempt": attempts},
+            gateway_meta={
+                "openai_fallback_enabled": fallback_enabled,
+                "attempt": attempts,
+            },
         )
 
         try:
@@ -223,6 +227,7 @@ async def proxy_chat_completion(
                     trace_id=trace_id,
                     session_id=session_id,
                     transport_attempts=transport_attempts,
+                    fallback_enabled=fallback_enabled,
                 )
 
             resp = await _non_stream_once(
@@ -247,6 +252,7 @@ async def proxy_chat_completion(
                     backend=target.name,
                     latency_ms=e2e_ms,
                     status_code=resp.status_code,
+                    gateway_meta={"openai_fallback_enabled": fallback_enabled},
                 )
                 return Response(
                     content=resp.content, status_code=resp.status_code, headers=dict(resp.headers)
@@ -271,7 +277,11 @@ async def proxy_chat_completion(
                     path=path,
                     backend=target.name,
                     status_code=resp.status_code,
-                    gateway_meta={"reason": "upstream_status", "attempt": attempts},
+                    gateway_meta={
+                        "openai_fallback_enabled": fallback_enabled,
+                        "reason": "upstream_status",
+                        "attempt": attempts,
+                    },
                 )
                 _release_dispatch(registry, target.name, pending.classify)
                 nxt = _pick_retry_target(registry, cfg, pending.classify, avoid=target.name)
@@ -291,6 +301,7 @@ async def proxy_chat_completion(
                 backend=target.name,
                 latency_ms=e2e_ms,
                 status_code=resp.status_code,
+                gateway_meta={"openai_fallback_enabled": fallback_enabled},
             )
             return Response(
                 content=resp.content, status_code=resp.status_code, headers=dict(resp.headers)
@@ -319,6 +330,7 @@ async def proxy_chat_completion(
                 session_id=session_id,
                 path=path,
                 backend=target.name,
+                gateway_meta={"openai_fallback_enabled": fallback_enabled},
                 error=_transport_error_payload(e, target.name),
             )
             if attempts < cfg.retry.max_attempts:
@@ -332,7 +344,11 @@ async def proxy_chat_completion(
                     session_id=session_id,
                     path=path,
                     backend=target.name,
-                    gateway_meta={"reason": "transport", "attempt": attempts},
+                    gateway_meta={
+                        "openai_fallback_enabled": fallback_enabled,
+                        "reason": "transport",
+                        "attempt": attempts,
+                    },
                 )
                 _release_dispatch(registry, target.name, pending.classify)
                 nxt = _pick_retry_target(registry, cfg, pending.classify, avoid=target.name)
@@ -349,6 +365,7 @@ async def proxy_chat_completion(
                 session_id=session_id,
                 path=path,
                 backend=target.name,
+                gateway_meta={"openai_fallback_enabled": fallback_enabled},
                 error={
                     "type": type(e).__name__,
                     "message": str(e),
@@ -371,6 +388,7 @@ async def proxy_chat_completion(
         session_id=session_id,
         path=path,
         backend=target.name,
+        gateway_meta={"openai_fallback_enabled": fallback_enabled},
         error={
             "type": "RetryExhausted",
             "message": str(last_error or "retry exhausted"),
@@ -402,6 +420,7 @@ async def _proxy_streaming(
     trace_id: str | None,
     session_id: str | None,
     transport_attempts: list[dict[str, Any]],
+    fallback_enabled: bool,
 ) -> StreamingResponse:
     """Stream response bytes; release inflight after the client finishes reading."""
     path = pending.path or "/v1/chat/completions"
@@ -439,6 +458,7 @@ async def _proxy_streaming(
             session_id=session_id,
             path=path,
             backend=target.name,
+            gateway_meta={"openai_fallback_enabled": fallback_enabled},
             error=_transport_error_payload(e, target.name),
         )
         log_gateway_event(
@@ -450,6 +470,7 @@ async def _proxy_streaming(
             session_id=session_id,
             path=path,
             backend=target.name,
+            gateway_meta={"openai_fallback_enabled": fallback_enabled},
             error={
                 "type": type(e).__name__,
                 "message": str(e),
@@ -484,6 +505,7 @@ async def _proxy_streaming(
             backend=target.name,
             latency_ms=ttft_ms,
             status_code=resp.status_code,
+            gateway_meta={"openai_fallback_enabled": fallback_enabled},
         )
         return Response(content=body, status_code=resp.status_code)
 
@@ -502,7 +524,11 @@ async def _proxy_streaming(
         backend=target.name,
         latency_ms=ttft_ms,
         status_code=resp.status_code,
-        gateway_meta={"streaming": True, "phase": "headers"},
+        gateway_meta={
+            "openai_fallback_enabled": fallback_enabled,
+            "streaming": True,
+            "phase": "headers",
+        },
     )
 
     first_byte = [True]
@@ -526,6 +552,7 @@ async def _proxy_streaming(
                             backend=target.name,
                             latency_ms=ttfb_ms,
                             status_code=resp.status_code,
+                            gateway_meta={"openai_fallback_enabled": fallback_enabled},
                         )
                     yield chunk
         finally:
@@ -546,6 +573,7 @@ async def _proxy_streaming(
                 backend=target.name,
                 latency_ms=e2e,
                 status_code=resp.status_code,
+                gateway_meta={"openai_fallback_enabled": fallback_enabled},
             )
 
     out_headers = {

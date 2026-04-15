@@ -53,6 +53,7 @@ async def chat_completions(request: Request) -> Response:
     session_id = request.headers.get("x-session-id") or request.headers.get("X-Session-Id")
     path = request.url.path or "/v1/chat/completions"
     cfg = request.app.state.cfg
+    fallback_enabled = cfg.openai_fallback.enabled
     registry = request.app.state.registry
     queue: AdmissionQueue = request.app.state.queue
     client: httpx.AsyncClient = request.app.state.http
@@ -65,6 +66,7 @@ async def chat_completions(request: Request) -> Response:
         trace_id=trace_id,
         session_id=session_id,
         path=path,
+        gateway_meta={"openai_fallback_enabled": fallback_enabled},
     )
 
     body = await request.body()
@@ -77,6 +79,7 @@ async def chat_completions(request: Request) -> Response:
             trace_id=trace_id,
             session_id=session_id,
             path=path,
+            gateway_meta={"openai_fallback_enabled": fallback_enabled},
             error={
                 "type": "ValidationError",
                 "message": "empty body",
@@ -97,6 +100,7 @@ async def chat_completions(request: Request) -> Response:
             trace_id=trace_id,
             session_id=session_id,
             path=path,
+            gateway_meta={"openai_fallback_enabled": fallback_enabled},
             error={
                 "type": "ValidationError",
                 "message": str(e),
@@ -117,6 +121,7 @@ async def chat_completions(request: Request) -> Response:
             trace_id=trace_id,
             session_id=session_id,
             path=path,
+            gateway_meta={"openai_fallback_enabled": fallback_enabled},
             error={
                 "type": "ValidationError",
                 "message": str(e.detail),
@@ -136,6 +141,7 @@ async def chat_completions(request: Request) -> Response:
         session_id=session_id,
         path=path,
         gateway_meta={
+            "openai_fallback_enabled": fallback_enabled,
             "request_class": classify.req_class.value,
             "stream": classify.stream,
             "est_tokens": classify.est_tokens,
@@ -171,7 +177,11 @@ async def chat_completions(request: Request) -> Response:
                 session_id=session_id,
                 path=path,
                 backend=fallback.name,
-                gateway_meta={"reason": "queue_full_fallback", "provider": "openai"},
+                gateway_meta={
+                    "openai_fallback_enabled": fallback_enabled,
+                    "reason": "queue_full_fallback",
+                    "provider": "openai",
+                },
             )
             gateway_fallback_requests_total.labels(provider="openai").inc()
             return await proxy_chat_completion(
@@ -194,6 +204,7 @@ async def chat_completions(request: Request) -> Response:
             trace_id=trace_id,
             session_id=session_id,
             path=path,
+            gateway_meta={"openai_fallback_enabled": fallback_enabled},
             error={
                 "type": "QueueFull",
                 "message": "admission queue at capacity",
@@ -214,6 +225,7 @@ async def chat_completions(request: Request) -> Response:
         trace_id=trace_id,
         session_id=session_id,
         path=path,
+        gateway_meta={"openai_fallback_enabled": fallback_enabled},
     )
 
     wait_s = cfg.scheduler.queue_max_age_ms / 1000.0
@@ -232,7 +244,11 @@ async def chat_completions(request: Request) -> Response:
                 session_id=session_id,
                 path=path,
                 backend=fallback.name,
-                gateway_meta={"reason": "queue_age_fallback", "provider": "openai"},
+                gateway_meta={
+                    "openai_fallback_enabled": fallback_enabled,
+                    "reason": "queue_age_fallback",
+                    "provider": "openai",
+                },
             )
             gateway_fallback_requests_total.labels(provider="openai").inc()
             return await proxy_chat_completion(
@@ -255,6 +271,7 @@ async def chat_completions(request: Request) -> Response:
             trace_id=trace_id,
             session_id=session_id,
             path=path,
+            gateway_meta={"openai_fallback_enabled": fallback_enabled},
             error={
                 "type": "QueueTimeout",
                 "message": "dispatch wait exceeded queue_max_age_ms",
@@ -278,7 +295,11 @@ async def chat_completions(request: Request) -> Response:
                 session_id=session_id,
                 path=path,
                 backend=fallback.name,
-                gateway_meta={"reason": "no_backend_fallback", "provider": "openai"},
+                gateway_meta={
+                    "openai_fallback_enabled": fallback_enabled,
+                    "reason": "no_backend_fallback",
+                    "provider": "openai",
+                },
             )
             gateway_fallback_requests_total.labels(provider="openai").inc()
             return await proxy_chat_completion(
