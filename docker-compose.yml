@@ -8,7 +8,7 @@ services:
       - "8010:8010"
     environment:
       - GATEWAY_CONFIG=${GATEWAY_CONFIG:-/app/config.yaml}
-      - LOG_TIMEZONE=${LOG_TIMEZONE:-UTC}
+      - LOG_TIMEZONE=${LOG_TIMEZONE:-EST}
       - ENV=${ENV:-}
     # Mount config with reachable vLLM URLs (e.g. NodePort http://192.168.86.173:30080)
     # volumes:

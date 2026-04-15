@@ -15,14 +15,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 def _load_log_timezone(name: str) -> ZoneInfo:
     """Resolve LOG_TIMEZONE; slim images need PyPI ``tzdata`` (see pyproject)."""
-    raw = (name or "UTC").strip()
+    raw = (name or "EST").strip()
     # "EST" is not a stable IANA key everywhere; US Eastern is the usual intent.
     if raw.upper() in ("EST", "EDT") or raw == "US/Eastern":
         raw = "America/New_York"
     try:
         return ZoneInfo(raw)
     except ZoneInfoNotFoundError:
-        return ZoneInfo("UTC")
+        return ZoneInfo("America/New_York")
 
 # Legacy JSON key order (non-gateway lines)
 _JSON_CONTEXT_KEYS = ("request_id", "session_id", "method", "path", "status")
