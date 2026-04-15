@@ -120,6 +120,8 @@ pip install -e ".[dev]"
 
 The gateway writes **structured JSON** (one object per line) to **standard output**. In Kubernetes, a log agent such as **Grafana Alloy** (often as a DaemonSet) can tail pod logs and forward them to **Loki** without any in-process Loki client. Optional `LOG_TIMEZONE` (IANA name, default `America/New_York`) controls the `ts` field; values `EST` / `EDT` are treated as US Eastern. Slim images ship the zone database via the `tzdata` dependency; see `.env.example`.
 
+Optional overload fallback is supported via `openai_fallback` in `config.yaml` (model defaults to `gpt-4o-mini`). When enabled, set `OPENAI_API_KEY` in `.env`.
+
 3. Run gateway
 uvicorn app.main:app --host 0.0.0.0 --port 8010
 4. Send request

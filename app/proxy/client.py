@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -128,6 +130,42 @@ def _transport_error_payload(exc: Exception, backend: str) -> dict[str, Any]:
     }
 
 
+def _is_openai_fallback(target: BackendTarget, cfg: GatewayConfig) -> bool:
+    return cfg.openai_fallback.enabled and target.name == cfg.openai_fallback.backend_name
+
+
+def _prepare_target_request(
+    *,
+    target: BackendTarget,
+    cfg: GatewayConfig,
+    pending: PendingRequest,
+    headers: dict[str, str],
+) -> tuple[bytes, dict[str, str]]:
+    """Return request body+headers tailored for the selected target."""
+    out_headers = dict(headers)
+    body = pending.body
+    if not _is_openai_fallback(target, cfg):
+        return body, out_headers
+
+    api_key = os.environ.get(cfg.openai_fallback.api_key_env)
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "reason": "fallback_unavailable",
+                "message": f"missing env var {cfg.openai_fallback.api_key_env}",
+                "request_id": pending.request_id,
+            },
+        )
+    out_headers["authorization"] = f"Bearer {api_key}"
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return body, out_headers
+    data["model"] = cfg.openai_fallback.model
+    return json.dumps(data).encode("utf-8"), out_headers
+
+
 async def proxy_chat_completion(
     *,
     client: httpx.AsyncClient,
@@ -154,6 +192,9 @@ async def proxy_chat_completion(
         attempts += 1
         st = registry.get(target.name)
         url = f"{target.base_url}{path}{query}"
+        attempt_body, attempt_headers = _prepare_target_request(
+            target=target, cfg=cfg, pending=pending, headers=headers
+        )
         t0 = time.monotonic()
         log_gateway_event(
             logger,
@@ -175,7 +216,8 @@ async def proxy_chat_completion(
                     pending=pending,
                     target=target,
                     url=url,
-                    headers=headers,
+                    headers=attempt_headers,
+                    body=attempt_body,
                     timeout=timeout,
                     rid=rid,
                     trace_id=trace_id,
@@ -184,7 +226,7 @@ async def proxy_chat_completion(
                 )
 
             resp = await _non_stream_once(
-                client, url, body=pending.body, headers=headers, timeout=timeout
+                client, url, body=attempt_body, headers=attempt_headers, timeout=timeout
             )
             e2e_ms = (time.monotonic() - t0) * 1000
 
@@ -354,6 +396,7 @@ async def _proxy_streaming(
     target: BackendTarget,
     url: str,
     headers: dict[str, str],
+    body: bytes,
     timeout: httpx.Timeout,
     rid: str,
     trace_id: str | None,
@@ -369,7 +412,7 @@ async def _proxy_streaming(
             "POST",
             url,
             headers=headers,
-            content=pending.body,
+            content=body,
             timeout=timeout,
         )
         resp = await client.send(req, stream=True)

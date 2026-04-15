@@ -11,9 +11,14 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
 
+from app.core.config import GatewayConfig
 from app.core.logging import log_gateway_event, new_request_id
 from app.core.types import BackendTarget, PendingRequest, RejectionReason
-from app.metrics.prometheus import gateway_requests_total, observe_rejection
+from app.metrics.prometheus import (
+    gateway_fallback_requests_total,
+    gateway_requests_total,
+    observe_rejection,
+)
 from app.metrics.sync import sync_backend_gauges
 from app.proxy.client import proxy_chat_completion
 from app.queue.admission_queue import AdmissionQueue, QueueFullError
@@ -155,6 +160,31 @@ async def chat_completions(request: Request) -> Response:
     try:
         await queue.enqueue(pending)
     except QueueFullError:
+        fallback = _fallback_target(cfg)
+        if fallback:
+            log_gateway_event(
+                logger,
+                logging.WARN,
+                "request_dispatched",
+                request_id=rid,
+                trace_id=trace_id,
+                session_id=session_id,
+                path=path,
+                backend=fallback.name,
+                gateway_meta={"reason": "queue_full_fallback", "provider": "openai"},
+            )
+            gateway_fallback_requests_total.labels(provider="openai").inc()
+            return await proxy_chat_completion(
+                client=client,
+                cfg=cfg,
+                registry=registry,
+                pending=pending,
+                initial=fallback,
+                rid=rid,
+                trace_id=trace_id,
+                session_id=session_id,
+            )
+
         observe_rejection(RejectionReason.QUEUE_FULL)
         log_gateway_event(
             logger,
@@ -191,6 +221,31 @@ async def chat_completions(request: Request) -> Response:
         target: BackendTarget = await asyncio.wait_for(dispatch_future, timeout=wait_s)
     except TimeoutError:
         pending.cancelled.set()
+        fallback = _fallback_target(cfg)
+        if fallback:
+            log_gateway_event(
+                logger,
+                logging.WARN,
+                "request_dispatched",
+                request_id=rid,
+                trace_id=trace_id,
+                session_id=session_id,
+                path=path,
+                backend=fallback.name,
+                gateway_meta={"reason": "queue_age_fallback", "provider": "openai"},
+            )
+            gateway_fallback_requests_total.labels(provider="openai").inc()
+            return await proxy_chat_completion(
+                client=client,
+                cfg=cfg,
+                registry=registry,
+                pending=pending,
+                initial=fallback,
+                rid=rid,
+                trace_id=trace_id,
+                session_id=session_id,
+            )
+
         observe_rejection(RejectionReason.QUEUE_AGE)
         log_gateway_event(
             logger,
@@ -212,6 +267,31 @@ async def chat_completions(request: Request) -> Response:
             detail={"reason": str(RejectionReason.QUEUE_AGE.value), "request_id": rid},
         ) from None
     except ScheduleError as e:
+        fallback = _fallback_target(cfg)
+        if fallback:
+            log_gateway_event(
+                logger,
+                logging.WARN,
+                "request_dispatched",
+                request_id=rid,
+                trace_id=trace_id,
+                session_id=session_id,
+                path=path,
+                backend=fallback.name,
+                gateway_meta={"reason": "no_backend_fallback", "provider": "openai"},
+            )
+            gateway_fallback_requests_total.labels(provider="openai").inc()
+            return await proxy_chat_completion(
+                client=client,
+                cfg=cfg,
+                registry=registry,
+                pending=pending,
+                initial=fallback,
+                rid=rid,
+                trace_id=trace_id,
+                session_id=session_id,
+            )
+
         observe_rejection(RejectionReason.NO_BACKEND)
         # request_rejected for queue age is logged in dispatcher._reject
         raise HTTPException(
@@ -241,3 +321,10 @@ def _validate_minimal_chat(data: dict[str, Any]) -> None:
     msgs = data.get("messages")
     if not isinstance(msgs, list) or len(msgs) < 1:
         raise HTTPException(status_code=400, detail="messages must be a non-empty array")
+
+
+def _fallback_target(cfg: GatewayConfig) -> BackendTarget | None:
+    fb = cfg.openai_fallback
+    if not fb.enabled:
+        return None
+    return BackendTarget(name=fb.backend_name, base_url=fb.base_url.rstrip("/"))

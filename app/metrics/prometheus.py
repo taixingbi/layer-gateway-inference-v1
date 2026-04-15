@@ -64,6 +64,11 @@ gateway_rejections_total = Counter(
     "Rejections by reason",
     ["reason"],
 )
+gateway_fallback_requests_total = Counter(
+    "gateway_fallback_requests_total",
+    "Requests routed to fallback provider",
+    ["provider"],
+)
 
 request_latency_ms = Histogram(
     "gateway_request_latency_ms",

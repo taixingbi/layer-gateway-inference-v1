@@ -41,3 +41,10 @@ health:
 retry:
   max_attempts: 2
   retryable_statuses: [502, 503, 504]
+
+openai_fallback:
+  enabled: false
+  backend_name: openai-fallback
+  base_url: https://api.openai.com
+  model: gpt-4o-mini
+  api_key_env: OPENAI_API_KEY

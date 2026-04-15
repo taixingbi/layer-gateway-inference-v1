@@ -54,6 +54,14 @@ class RetryConfig(BaseModel):
     retryable_statuses: list[int] = Field(default_factory=lambda: [502, 503, 504])
 
 
+class OpenAIFallbackConfig(BaseModel):
+    enabled: bool = False
+    backend_name: str = "openai-fallback"
+    base_url: str = "https://api.openai.com"
+    model: str = "gpt-4o-mini"
+    api_key_env: str = "OPENAI_API_KEY"
+
+
 class GatewayConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
@@ -61,6 +69,7 @@ class GatewayConfig(BaseModel):
     backends: list[BackendEntry] = Field(default_factory=list)
     health: HealthConfig = Field(default_factory=HealthConfig)
     retry: RetryConfig = Field(default_factory=RetryConfig)
+    openai_fallback: OpenAIFallbackConfig = Field(default_factory=OpenAIFallbackConfig)
 
 
 def load_gateway_config(path: str | Path | None = None) -> GatewayConfig:
