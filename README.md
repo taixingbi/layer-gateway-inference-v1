@@ -179,8 +179,10 @@ curl http://192.168.86.179:30180/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "Qwen/Qwen2.5-7B-Instruct", "messages":
       [{"role": "user", "content": "where is jersey city"}],
-      "max_tokens": 50}'           
-
+      "max_tokens": 50}'
+```
+         
+```bash
 curl http://192.168.86.179:30180/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-Request-Id: request-id-1" \
@@ -191,7 +193,8 @@ curl http://192.168.86.179:30180/v1/chat/completions \
     "messages": [
       {"role": "user", "content": "where is jersey city"}
     ],
-    "max_tokens": 50
+    "max_tokens": 50,
+    "temperature": 0.7
   }'
 ```
 
