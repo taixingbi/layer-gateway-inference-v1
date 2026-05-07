@@ -1,4 +1,4 @@
-"""HTTP API: chat completions, health check, and Prometheus scrape endpoint."""
+"""HTTP API: chat completions, health/ready probes, and Prometheus metrics."""
 
 from __future__ import annotations
 
@@ -29,10 +29,38 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/healthz")
-async def healthz() -> dict[str, str]:
+@router.get("/health")
+async def health() -> dict[str, str]:
     """Liveness probe: process is up."""
     return {"status": "ok"}
+
+
+@router.get("/ready")
+async def ready(request: Request) -> Response:
+    """Readiness probe: app state is initialized and outbound client is available."""
+    required_state = ("cfg", "registry", "queue", "http")
+    missing = [name for name in required_state if not hasattr(request.app.state, name)]
+    if missing:
+        detail = {"status": "not_ready", "reason": "missing_state", "missing": missing}
+        return Response(
+            content=json.dumps(detail),
+            status_code=503,
+            media_type="application/json",
+        )
+
+    client = request.app.state.http
+    if getattr(client, "is_closed", False):
+        detail = {"status": "not_ready", "reason": "http_client_closed"}
+        return Response(
+            content=json.dumps(detail),
+            status_code=503,
+            media_type="application/json",
+        )
+
+    return Response(
+        content=json.dumps({"status": "ready"}),
+        media_type="application/json",
+    )
 
 
 @router.get("/metrics")
@@ -337,6 +365,24 @@ async def chat_completions(request: Request) -> Response:
 
 
 def _validate_minimal_chat(data: dict[str, Any]) -> None:
+    forbidden_correlation_fields = (
+        "request_id",
+        "trace_id",
+        "session_id",
+        "request-id",
+        "trace-id",
+        "session-id",
+    )
+    present_forbidden = [k for k in forbidden_correlation_fields if k in data]
+    if present_forbidden:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "request_id/trace_id/session_id must be sent as headers "
+                "(x-request-id, x-trace-id, x-session-id), not in request body"
+            ),
+        )
+
     if "model" not in data or not data["model"]:
         raise HTTPException(status_code=400, detail="model is required")
     msgs = data.get("messages")

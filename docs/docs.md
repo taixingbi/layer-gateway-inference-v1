@@ -12,7 +12,8 @@ Primary route:
 
 Operational routes:
 
-- `GET /healthz`
+- `GET /health`
+- `GET /ready`
 - `GET /metrics`
 
 ## 2) High-level request flow

@@ -124,13 +124,30 @@ Optional overload fallback is supported via `openai_fallback` in `config.yaml` (
 
 3. Run gateway
 uvicorn app.main:app --host 0.0.0.0 --port 8010
-4. Send request
-curl http://192.168.86.179:8010/v1/chat/completions \
+4. Set gateway URL
+export GATEWAY_URL="http://192.168.86.179:8010"
+5. Send request
+curl "$GATEWAY_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "Qwen/Qwen2.5-7B-Instruct",
     "messages": [{"role":"user","content":"Hello"}]
   }'
+
+With correlation headers:
+
+```bash
+curl -sS "$GATEWAY_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "X-Request-Id: smoke-req-1" \
+  -H "X-Trace-Id: smoke-trace-1" \
+  -H "X-Session-Id: smoke-session-1" \
+  -d '{
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "messages": [{"role":"user","content":"hello from smoke test"}],
+    "max_tokens": 32
+  }'
+```
   
 
 If you see **504** with `connect` / *connection attempts failed*, the gateway could not reach the URLs in `config.yaml`. This repo expects two NodePort (or equivalent) endpoints, e.g. `http://192.168.86.173:30080` and `http://192.168.86.176:30080` — adjust to your LAN. Verify with `curl -sS http://192.168.86.173:30080/v1/models` (and the second node).
@@ -174,29 +191,8 @@ sudo docker run -d --restart unless-stopped \
 ```
 
 ### test with k3s
-```bash
-curl http://192.168.86.179:30180/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model": "Qwen/Qwen2.5-7B-Instruct", "messages":
-      [{"role": "user", "content": "where is jersey city"}],
-      "max_tokens": 50}'
-```
-         
-```bash
-curl http://192.168.86.179:30180/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "X-Request-Id: request-id-1" \
-  -H "X-Trace-Id: trace-id-1" \
-  -H "X-Session-Id: session-id-1" \
-  -d '{
-    "model": "Qwen/Qwen2.5-7B-Instruct",
-    "messages": [
-      {"role": "user", "content": "where is jersey city"}
-    ],
-    "max_tokens": 50,
-    "temperature": 0.7
-  }'
-```
+
+Moved to `docs/smoke-test.md` under **6) k3s smoke examples**.
 
 ### CI: publish to Docker Hub on `main`
 
