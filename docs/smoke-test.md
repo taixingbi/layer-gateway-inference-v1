@@ -65,7 +65,7 @@ Then verify log lines include:
 - `trace_id=smoke-trace-2`
 - `session_id=smoke-session-2`
 
-## 5) k3s smoke examples
+## 6) k3s smoke examples
 
 These are direct examples against a k3s-exposed gateway service.
 
@@ -94,5 +94,24 @@ curl http://192.168.86.179:30180/v1/chat/completions \
     ],
     "max_tokens": 50,
     "temperature": 0.7
+  }'
+```
+
+Streaming request:
+
+```bash
+curl -N http://192.168.86.179:30180/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Request-Id: request-id-stream-1" \
+  -H "X-Trace-Id: trace-id-stream-1" \
+  -H "X-Session-Id: session-id-stream-1" \
+  -d '{
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "messages": [
+      {"role": "user", "content": "tell me 3 facts about jersey city"}
+    ],
+    "max_tokens": 80,
+    "temperature": 0.7,
+    "stream": true
   }'
 ```
