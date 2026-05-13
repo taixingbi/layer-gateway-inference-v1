@@ -48,6 +48,8 @@ class PendingRequest:
     """A chat completion waiting for scheduler dispatch."""
 
     request_id: str
+    conversation_id: str
+    is_new_conversation: bool
     enqueued_at_monotonic: float
     classify: ClassifyResult
     body: bytes

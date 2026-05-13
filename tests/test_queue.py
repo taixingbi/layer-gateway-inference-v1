@@ -19,8 +19,8 @@ async def test_queue_full():
     f1 = loop.create_future()
     f2 = loop.create_future()
     c = ClassifyResult(RequestClass.SMALL_CHAT, 10, 100, False, "m")
-    p1 = PendingRequest("1", time.monotonic(), c, b"{}", "/v1/chat/completions", "", {}, f1)
-    p2 = PendingRequest("2", time.monotonic(), c, b"{}", "/v1/chat/completions", "", {}, f2)
+    p1 = PendingRequest("1", "conv_1", False, time.monotonic(), c, b"{}", "/v1/chat/completions", "", {}, f1)
+    p2 = PendingRequest("2", "conv_2", False, time.monotonic(), c, b"{}", "/v1/chat/completions", "", {}, f2)
     await q.enqueue(p1)
     with pytest.raises(QueueFullError):
         await q.enqueue(p2)
@@ -41,7 +41,7 @@ async def test_dispatch_age_rejects():
     f = loop.create_future()
     c = ClassifyResult(RequestClass.SMALL_CHAT, 10, 100, False, "m")
     past = time.monotonic() - 1.0
-    p = PendingRequest("x", past, c, b"{}", "/v1/chat/completions", "", {}, f)
+    p = PendingRequest("x", "conv_x", False, past, c, b"{}", "/v1/chat/completions", "", {}, f)
     await q.enqueue(p)
     await _dispatch_tick(cfg, registry, q, max_age_s=0.05)
     assert f.done()

@@ -148,7 +148,8 @@ curl -sS "$GATEWAY_URL/v1/chat/completions" \
     "max_tokens": 32
   }'
 ```
-  
+
+Optional JSON field **`conversation_id`**: thread id for the chat; omitted or blank values get a generated `conv_…` id. See [docs/conversation-id.md](docs/conversation-id.md).
 
 If you see **504** with `connect` / *connection attempts failed*, the gateway could not reach the URLs in `config.yaml`. This repo expects two NodePort (or equivalent) endpoints, e.g. `http://192.168.86.173:30080` and `http://192.168.86.176:30080` — adjust to your LAN. Verify with `curl -sS http://192.168.86.173:30080/v1/models` (and the second node).
 

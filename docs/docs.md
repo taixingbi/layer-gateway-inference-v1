@@ -19,7 +19,7 @@ Operational routes:
 ## 2) High-level request flow
 
 1. Request arrives at `routes.py`.
-2. Gateway validates payload and assigns/requests correlation IDs.
+2. Gateway validates payload, resolves **`conversation_id`** / **`is_new_conversation`** from the JSON body (see [conversation-id.md](conversation-id.md)), and assigns/reads header correlation IDs.
 3. Request is classified (small/medium/large/streaming_long).
 4. Request enters `AdmissionQueue`.
 5. Scheduler picks an eligible backend using score + health policies.
@@ -87,8 +87,10 @@ Structured logs are emitted as one JSON line per event.
 
 Gateway event fields include:
 
-- `event`, `service`, `env`, `trace_id`, `request_id`, `session_id`,
+- `event`, `service`, `env`, `trace_id`, `request_id`, `session_id`, `conversation_id`, `is_new_conversation` (on chat-path events),
 - optional `backend`, `latency_ms`, `status_code`, and `error`.
+
+Thread semantics: [conversation-id.md](conversation-id.md).
 
 ID behavior:
 

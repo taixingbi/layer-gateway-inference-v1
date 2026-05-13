@@ -1,6 +1,6 @@
 # Request ID, trace ID, and session ID
 
-This document describes how the gateway assigns and propagates correlation identifiers for logs and upstream calls. For a shorter summary, see [docs.md §6](docs.md#6-logging-and-tracing-ids).
+This document describes how the gateway assigns and propagates correlation identifiers for logs and upstream calls. For a shorter summary, see [docs.md §6](docs.md#6-logging-and-tracing-ids). For **thread id** in the chat JSON body, response merge, and `x-conversation-id` / `x-is-new-conversation`, see [conversation-id.md](conversation-id.md).
 
 ## What each ID is for
 

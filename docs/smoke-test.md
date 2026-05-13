@@ -65,6 +65,24 @@ Then verify log lines include:
 - `trace_id=smoke-trace-2`
 - `session_id=smoke-session-2`
 
+## 5) Conversation id (body)
+
+Omit `conversation_id` to let the gateway assign `conv_` + 32 hex and set `is_new_conversation: true` in logs and in the merged JSON response (non-stream) or leading SSE event (stream). Response headers include `x-conversation-id` and `x-is-new-conversation`.
+
+```bash
+curl -sS "$GATEWAY_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"Qwen/Qwen2.5-7B-Instruct","messages":[{"role":"user","content":"ping"}]}'
+```
+
+Reuse an existing thread id:
+
+```bash
+curl -sS "$GATEWAY_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"Qwen/Qwen2.5-7B-Instruct","messages":[{"role":"user","content":"follow up"}],"conversation_id":"my-thread-1"}'
+```
+
 ## 6) k3s smoke examples
 
 These are direct examples against a k3s-exposed gateway service.

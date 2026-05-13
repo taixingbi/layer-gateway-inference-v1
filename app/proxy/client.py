@@ -45,6 +45,40 @@ def _filter_headers(h: dict[str, str]) -> dict[str, str]:
     return out
 
 
+_HOP_BY_HOP_RESPONSE = frozenset({"transfer-encoding", "connection", "content-length", "server"})
+
+
+def _filtered_client_response_headers(h: httpx.Headers | dict[str, str]) -> dict[str, str]:
+    return {k: v for k, v in dict(h).items() if k.lower() not in _HOP_BY_HOP_RESPONSE}
+
+
+def _inject_thread_headers(out_headers: dict[str, str], pending: PendingRequest) -> None:
+    out_headers["x-conversation-id"] = pending.conversation_id
+    out_headers["x-is-new-conversation"] = "true" if pending.is_new_conversation else "false"
+
+
+def _merge_conversation_into_response_json(content: bytes, pending: PendingRequest) -> bytes | None:
+    try:
+        data = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    merged = dict(data)
+    merged["conversation_id"] = pending.conversation_id
+    merged["is_new_conversation"] = pending.is_new_conversation
+    return json.dumps(merged, ensure_ascii=False).encode("utf-8")
+
+
+def _sse_conversation_prefix(pending: PendingRequest) -> bytes:
+    payload = {
+        "object": "gateway.conversation",
+        "conversation_id": pending.conversation_id,
+        "is_new_conversation": pending.is_new_conversation,
+    }
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
+
+
 def _release_dispatch(
     registry: BackendRegistry,
     backend_name: str,
@@ -196,6 +230,7 @@ async def proxy_chat_completion(
         attempt_body, attempt_headers = _prepare_target_request(
             target=target, cfg=cfg, pending=pending, headers=headers
         )
+        _inject_thread_headers(attempt_headers, pending)
         t0 = time.monotonic()
         log_gateway_event(
             logger,
@@ -204,6 +239,8 @@ async def proxy_chat_completion(
             request_id=rid,
             trace_id=trace_id,
             session_id=session_id,
+            conversation_id=pending.conversation_id,
+            is_new_conversation=pending.is_new_conversation,
             path=path,
             backend=target.name,
             gateway_meta={
@@ -248,14 +285,23 @@ async def proxy_chat_completion(
                     request_id=rid,
                     trace_id=trace_id,
                     session_id=session_id,
+                    conversation_id=pending.conversation_id,
+                    is_new_conversation=pending.is_new_conversation,
                     path=path,
                     backend=target.name,
                     latency_ms=e2e_ms,
                     status_code=resp.status_code,
                     gateway_meta={"openai_fallback_enabled": fallback_enabled},
                 )
+                out_h = _filtered_client_response_headers(resp.headers)
+                _inject_thread_headers(out_h, pending)
+                merged = _merge_conversation_into_response_json(resp.content, pending)
+                body_out = merged if merged is not None else resp.content
                 return Response(
-                    content=resp.content, status_code=resp.status_code, headers=dict(resp.headers)
+                    content=body_out,
+                    status_code=resp.status_code,
+                    headers=out_h,
+                    media_type=out_h.get("content-type", "application/json"),
                 )
 
             retryable = resp.status_code >= 500 or _should_retry_status(resp.status_code, cfg)
@@ -274,6 +320,8 @@ async def proxy_chat_completion(
                     request_id=rid,
                     trace_id=trace_id,
                     session_id=session_id,
+                    conversation_id=pending.conversation_id,
+                    is_new_conversation=pending.is_new_conversation,
                     path=path,
                     backend=target.name,
                     status_code=resp.status_code,
@@ -297,14 +345,18 @@ async def proxy_chat_completion(
                 request_id=rid,
                 trace_id=trace_id,
                 session_id=session_id,
+                conversation_id=pending.conversation_id,
+                is_new_conversation=pending.is_new_conversation,
                 path=path,
                 backend=target.name,
                 latency_ms=e2e_ms,
                 status_code=resp.status_code,
                 gateway_meta={"openai_fallback_enabled": fallback_enabled},
             )
+            out_h = _filtered_client_response_headers(resp.headers)
+            _inject_thread_headers(out_h, pending)
             return Response(
-                content=resp.content, status_code=resp.status_code, headers=dict(resp.headers)
+                content=resp.content, status_code=resp.status_code, headers=out_h
             )
 
         except (httpx.TimeoutException, httpx.ConnectError) as e:
@@ -328,6 +380,8 @@ async def proxy_chat_completion(
                 request_id=rid,
                 trace_id=trace_id,
                 session_id=session_id,
+                conversation_id=pending.conversation_id,
+                is_new_conversation=pending.is_new_conversation,
                 path=path,
                 backend=target.name,
                 gateway_meta={"openai_fallback_enabled": fallback_enabled},
@@ -342,6 +396,8 @@ async def proxy_chat_completion(
                     request_id=rid,
                     trace_id=trace_id,
                     session_id=session_id,
+                    conversation_id=pending.conversation_id,
+                    is_new_conversation=pending.is_new_conversation,
                     path=path,
                     backend=target.name,
                     gateway_meta={
@@ -363,6 +419,8 @@ async def proxy_chat_completion(
                 request_id=rid,
                 trace_id=trace_id,
                 session_id=session_id,
+                conversation_id=pending.conversation_id,
+                is_new_conversation=pending.is_new_conversation,
                 path=path,
                 backend=target.name,
                 gateway_meta={"openai_fallback_enabled": fallback_enabled},
@@ -386,6 +444,8 @@ async def proxy_chat_completion(
         request_id=rid,
         trace_id=trace_id,
         session_id=session_id,
+        conversation_id=pending.conversation_id,
+        is_new_conversation=pending.is_new_conversation,
         path=path,
         backend=target.name,
         gateway_meta={"openai_fallback_enabled": fallback_enabled},
@@ -456,6 +516,8 @@ async def _proxy_streaming(
             request_id=rid,
             trace_id=trace_id,
             session_id=session_id,
+            conversation_id=pending.conversation_id,
+            is_new_conversation=pending.is_new_conversation,
             path=path,
             backend=target.name,
             gateway_meta={"openai_fallback_enabled": fallback_enabled},
@@ -468,6 +530,8 @@ async def _proxy_streaming(
             request_id=rid,
             trace_id=trace_id,
             session_id=session_id,
+            conversation_id=pending.conversation_id,
+            is_new_conversation=pending.is_new_conversation,
             path=path,
             backend=target.name,
             gateway_meta={"openai_fallback_enabled": fallback_enabled},
@@ -501,13 +565,17 @@ async def _proxy_streaming(
             request_id=rid,
             trace_id=trace_id,
             session_id=session_id,
+            conversation_id=pending.conversation_id,
+            is_new_conversation=pending.is_new_conversation,
             path=path,
             backend=target.name,
             latency_ms=ttft_ms,
             status_code=resp.status_code,
             gateway_meta={"openai_fallback_enabled": fallback_enabled},
         )
-        return Response(content=body, status_code=resp.status_code)
+        err_headers = _filtered_client_response_headers(resp.headers)
+        _inject_thread_headers(err_headers, pending)
+        return Response(content=body, status_code=resp.status_code, headers=err_headers)
 
     if st:
         health_mod.on_success(st, registry.health_config())
@@ -520,6 +588,8 @@ async def _proxy_streaming(
         request_id=rid,
         trace_id=trace_id,
         session_id=session_id,
+        conversation_id=pending.conversation_id,
+        is_new_conversation=pending.is_new_conversation,
         path=path,
         backend=target.name,
         latency_ms=ttft_ms,
@@ -531,11 +601,13 @@ async def _proxy_streaming(
         },
     )
 
+    sse_prefix = _sse_conversation_prefix(pending)
     first_byte = [True]
 
     async def wrapped() -> AsyncIterator[bytes]:
         total_t0 = time.monotonic()
         try:
+            yield sse_prefix
             async for chunk in resp.aiter_bytes():
                 if chunk:
                     if first_byte[0]:
@@ -548,6 +620,8 @@ async def _proxy_streaming(
                             request_id=rid,
                             trace_id=trace_id,
                             session_id=session_id,
+                            conversation_id=pending.conversation_id,
+                            is_new_conversation=pending.is_new_conversation,
                             path=path,
                             backend=target.name,
                             latency_ms=ttfb_ms,
@@ -569,6 +643,8 @@ async def _proxy_streaming(
                 request_id=rid,
                 trace_id=trace_id,
                 session_id=session_id,
+                conversation_id=pending.conversation_id,
+                is_new_conversation=pending.is_new_conversation,
                 path=path,
                 backend=target.name,
                 latency_ms=e2e,
@@ -581,6 +657,7 @@ async def _proxy_streaming(
         for k, v in resp.headers.items()
         if k.lower() not in ("transfer-encoding", "connection", "content-length", "server")
     }
+    _inject_thread_headers(out_headers, pending)
     return StreamingResponse(
         wrapped(),
         status_code=resp.status_code,
