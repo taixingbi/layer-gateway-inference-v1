@@ -99,7 +99,6 @@ async def _dispatch_tick(
             "request_dispatched",
             request_id=pending.request_id,
             conversation_id=pending.conversation_id,
-            is_new_conversation=pending.is_new_conversation,
             path=pending.path,
             backend=chosen.name,
             gateway_meta={"request_class": pending.classify.req_class.value},
@@ -118,7 +117,6 @@ def _reject(pending: PendingRequest, exc: Exception) -> None:
             "request_rejected",
             request_id=pending.request_id,
             conversation_id=pending.conversation_id,
-            is_new_conversation=pending.is_new_conversation,
             path=pending.path,
             error={
                 "type": type(exc).__name__,

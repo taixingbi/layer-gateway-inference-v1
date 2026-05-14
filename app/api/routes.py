@@ -161,7 +161,6 @@ async def chat_completions(request: Request) -> Response:
         trace_id=trace_id,
         session_id=session_id,
         conversation_id=conversation_id,
-        is_new_conversation=is_new_conversation,
         path=path,
         gateway_meta={"openai_fallback_enabled": fallback_enabled},
     )
@@ -175,7 +174,6 @@ async def chat_completions(request: Request) -> Response:
         trace_id=trace_id,
         session_id=session_id,
         conversation_id=conversation_id,
-        is_new_conversation=is_new_conversation,
         path=path,
         gateway_meta={
             "openai_fallback_enabled": fallback_enabled,
@@ -215,7 +213,6 @@ async def chat_completions(request: Request) -> Response:
                 trace_id=trace_id,
                 session_id=session_id,
                 conversation_id=conversation_id,
-                is_new_conversation=is_new_conversation,
                 path=path,
                 backend=fallback.name,
                 gateway_meta={
@@ -245,7 +242,6 @@ async def chat_completions(request: Request) -> Response:
             trace_id=trace_id,
             session_id=session_id,
             conversation_id=conversation_id,
-            is_new_conversation=is_new_conversation,
             path=path,
             gateway_meta={"openai_fallback_enabled": fallback_enabled},
             error={
@@ -268,7 +264,6 @@ async def chat_completions(request: Request) -> Response:
         trace_id=trace_id,
         session_id=session_id,
         conversation_id=conversation_id,
-        is_new_conversation=is_new_conversation,
         path=path,
         gateway_meta={"openai_fallback_enabled": fallback_enabled},
     )
@@ -288,7 +283,6 @@ async def chat_completions(request: Request) -> Response:
                 trace_id=trace_id,
                 session_id=session_id,
                 conversation_id=conversation_id,
-                is_new_conversation=is_new_conversation,
                 path=path,
                 backend=fallback.name,
                 gateway_meta={
@@ -318,7 +312,6 @@ async def chat_completions(request: Request) -> Response:
             trace_id=trace_id,
             session_id=session_id,
             conversation_id=conversation_id,
-            is_new_conversation=is_new_conversation,
             path=path,
             gateway_meta={"openai_fallback_enabled": fallback_enabled},
             error={
@@ -343,7 +336,6 @@ async def chat_completions(request: Request) -> Response:
                 trace_id=trace_id,
                 session_id=session_id,
                 conversation_id=conversation_id,
-                is_new_conversation=is_new_conversation,
                 path=path,
                 backend=fallback.name,
                 gateway_meta={

@@ -54,7 +54,6 @@ def log_gateway_event(
     trace_id: str | None = None,
     session_id: str | None = None,
     conversation_id: str | None = None,
-    is_new_conversation: bool | None = None,
     path: str | None = None,
     backend: str | None = None,
     latency_ms: float | None = None,
@@ -62,7 +61,7 @@ def log_gateway_event(
     error: Mapping[str, Any] | None = None,
     gateway_meta: Mapping[str, Any] | None = None,
 ) -> None:
-    """Emit one structured gateway log line (see tmp.md schema)."""
+    """Emit one structured gateway log line (see tmp.md schema). Chat logs include ``conversation_id`` only, not ``is_new_conversation``."""
     extra: dict[str, Any] = {
         "event": event,
         "service": "gateway",
@@ -76,8 +75,6 @@ def log_gateway_event(
         extra["session_id"] = session_id
     if conversation_id is not None:
         extra["conversation_id"] = conversation_id
-    if is_new_conversation is not None:
-        extra["is_new_conversation"] = is_new_conversation
     if path is not None:
         extra["path"] = path
     if backend is not None:
@@ -128,8 +125,6 @@ class JsonLogFormatter(logging.Formatter):
         for key in _GATEWAY_OPTIONAL_STRINGS:
             val = getattr(record, key, None)
             payload[key] = val if val not in (None, "") else "-"
-        if getattr(record, "is_new_conversation", None) is not None:
-            payload["is_new_conversation"] = bool(record.is_new_conversation)
         if getattr(record, "latency_ms", None) is not None:
             payload["latency_ms"] = record.latency_ms
         if getattr(record, "status_code", None) is not None:

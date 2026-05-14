@@ -52,9 +52,6 @@ Response headers include `x-conversation-id` and `x-is-new-conversation`.
 
 ## Structured logs
 
-Chat-path gateway events (for example `request_received`, `request_classified`, `proxy_start`, `proxy_response`, scheduler `request_dispatched`) include:
-
-- `conversation_id` (string; missing values in non-chat lines appear as `"-"` in JSON logs)
-- `is_new_conversation` (boolean, only present when the event carries chat context)
+Chat-path gateway events (for example `request_received`, `request_classified`, `proxy_start`, `proxy_response`, scheduler `request_dispatched`) include **`conversation_id`** (string; missing values in non-chat lines appear as `"-"` in JSON logs). The **`is_new_conversation`** flag is **not** included in structured logs; it is only exposed on HTTP responses (merged JSON, SSE prefix, and `x-is-new-conversation` header).
 
 See also [request-trace-session-ids.md](request-trace-session-ids.md) for header-based correlation ids.

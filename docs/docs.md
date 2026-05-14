@@ -87,7 +87,7 @@ Structured logs are emitted as one JSON line per event.
 
 Gateway event fields include:
 
-- `event`, `service`, `env`, `trace_id`, `request_id`, `session_id`, `conversation_id`, `is_new_conversation` (on chat-path events),
+- `event`, `service`, `env`, `trace_id`, `request_id`, `session_id`, `conversation_id` (on chat-path events),
 - optional `backend`, `latency_ms`, `status_code`, and `error`.
 
 Thread semantics: [conversation-id.md](conversation-id.md).

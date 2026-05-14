@@ -67,7 +67,7 @@ Then verify log lines include:
 
 ## 5) Conversation id (body)
 
-Omit `conversation_id` to let the gateway assign `conv_` + 32 hex and set `is_new_conversation: true` in logs and in the merged JSON response (non-stream) or leading SSE event (stream). Response headers include `x-conversation-id` and `x-is-new-conversation`.
+Omit `conversation_id` to let the gateway assign `conv_` + 32 hex. The gateway sets `is_new_conversation: true` in the **merged JSON response** (non-stream), **leading SSE event** (stream), and **`x-is-new-conversation`** response header—not in structured logs. Response headers include `x-conversation-id` and `x-is-new-conversation`.
 
 ```bash
 curl -sS "$GATEWAY_URL/v1/chat/completions" \
