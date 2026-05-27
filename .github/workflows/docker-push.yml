@@ -96,32 +96,47 @@ jobs:
         run: |
           set -euo pipefail
           KUSTOMIZE_FILE="manifests/gateway-inference/overlays/dev/kustomization.yaml"
+          LEGACY_FILE="manifests/gateway/layer-gateway-inference-dev.yaml"
           EXPECTED="docker.io/taixingbi/layer-gateway-inference-v1"
-          if [ ! -f "${KUSTOMIZE_FILE}" ]; then
-            echo "Missing ${KUSTOMIZE_FILE}" >&2
+          if [ -f "${KUSTOMIZE_FILE}" ]; then
+            TARGET_FILE="${KUSTOMIZE_FILE}"
+            TARGET_MODE="kustomize"
+            if ! grep -q '^images:' "${KUSTOMIZE_FILE}"; then
+              echo "Missing images: block in ${KUSTOMIZE_FILE} (push huntai-k3s GitOps overlay first)" >&2
+              exit 1
+            fi
+            ACTUAL="$(grep -E '^\s+-\s+name:' "${KUSTOMIZE_FILE}" | head -1 | sed -E 's/^[[:space:]]*-[[:space:]]*name:[[:space:]]*//;s/"//g;s/[[:space:]]*$//')"
+            if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+              echo "Unexpected images[0].name: '${ACTUAL}' (expected '${EXPECTED}')" >&2
+              exit 1
+            fi
+            if ! grep -qE '^[[:space:]]*newTag:' "${KUSTOMIZE_FILE}"; then
+              echo "Missing newTag in ${KUSTOMIZE_FILE}" >&2
+              exit 1
+            fi
+            sed -i -E "s|^([[:space:]]*newTag:[[:space:]]*).*$|\1\"${TAG}\"|" "${KUSTOMIZE_FILE}"
+            grep -q "newTag: \"${TAG}\"" "${KUSTOMIZE_FILE}" || {
+              echo "newTag was not updated to ${TAG}" >&2
+              exit 1
+            }
+          elif [ -f "${LEGACY_FILE}" ]; then
+            TARGET_FILE="${LEGACY_FILE}"
+            TARGET_MODE="legacy"
+            if ! grep -qE "^[[:space:]]*image:[[:space:]]*${EXPECTED}:" "${LEGACY_FILE}"; then
+              echo "Expected image line not found in ${LEGACY_FILE}" >&2
+              exit 1
+            fi
+            sed -i -E "s|^([[:space:]]*image:[[:space:]]*${EXPECTED}:).*$|\1${TAG}|" "${LEGACY_FILE}"
+            grep -q "${EXPECTED}:${TAG}" "${LEGACY_FILE}" || {
+              echo "image was not updated to ${EXPECTED}:${TAG}" >&2
+              exit 1
+            }
+          else
+            echo "Missing both ${KUSTOMIZE_FILE} and ${LEGACY_FILE}" >&2
             exit 1
           fi
-          if ! grep -q '^images:' "${KUSTOMIZE_FILE}"; then
-            echo "Missing images: block in ${KUSTOMIZE_FILE} (push huntai-k3s GitOps overlay first)" >&2
-            cat "${KUSTOMIZE_FILE}" >&2
-            exit 1
-          fi
-          ACTUAL="$(grep -E '^\s+-\s+name:' "${KUSTOMIZE_FILE}" | head -1 | sed -E 's/^[[:space:]]*-[[:space:]]*name:[[:space:]]*//;s/"//g;s/[[:space:]]*$//')"
-          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
-            echo "Unexpected images[0].name: '${ACTUAL}' (expected '${EXPECTED}')" >&2
-            cat "${KUSTOMIZE_FILE}" >&2
-            exit 1
-          fi
-          if ! grep -qE '^[[:space:]]*newTag:' "${KUSTOMIZE_FILE}"; then
-            echo "Missing newTag in ${KUSTOMIZE_FILE}" >&2
-            exit 1
-          fi
-          sed -i -E "s|^([[:space:]]*newTag:[[:space:]]*).*$|\1\"${TAG}\"|" "${KUSTOMIZE_FILE}"
-          grep -q "newTag: \"${TAG}\"" "${KUSTOMIZE_FILE}" || {
-            echo "newTag was not updated to ${TAG}" >&2
-            cat "${KUSTOMIZE_FILE}" >&2
-            exit 1
-          }
+          printf '%s\n' "${TARGET_FILE}" > .gitops-target-file
+          printf '%s\n' "${TARGET_MODE}" > .gitops-target-mode
 
       - name: Commit and push
         working-directory: huntai-k3s
@@ -134,6 +149,12 @@ jobs:
             echo "No manifest change; skip commit"
             exit 0
           fi
-          git add manifests/gateway-inference/overlays/dev/kustomization.yaml
-          git commit -m "chore(gateway-inference-dev): pin image ${{ needs.push.outputs.version }}"
+          TARGET_FILE="$(sed -n '1p' .gitops-target-file)"
+          TARGET_MODE="$(sed -n '1p' .gitops-target-mode)"
+          git add "${TARGET_FILE}"
+          if [ "${TARGET_MODE}" = "legacy" ]; then
+            git commit -m "chore(gateway-inference-dev): pin legacy image ${{ needs.push.outputs.version }}"
+          else
+            git commit -m "chore(gateway-inference-dev): pin image ${{ needs.push.outputs.version }}"
+          fi
           git push origin HEAD:main
