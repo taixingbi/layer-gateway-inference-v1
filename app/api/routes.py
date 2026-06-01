@@ -12,6 +12,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.backends.probe import not_ready_payload, probe_backends, ready_payload
+from app.build_info import version_payload
 from app.core.config import GatewayConfig
 from app.core.conversation import resolve_conversation_id, strip_conversation_fields
 from app.core.logging import log_gateway_event, new_request_id
@@ -35,6 +36,12 @@ logger = logging.getLogger(__name__)
 async def health() -> dict[str, str]:
     """Liveness probe: process is up."""
     return {"status": "ok"}
+
+
+@router.get("/version")
+def version() -> dict[str, str]:
+    """Service identity and build metadata (APP_VERSION, GIT_*, BUILD_*, ENVIRONMENT)."""
+    return version_payload()
 
 
 @router.get("/ready")

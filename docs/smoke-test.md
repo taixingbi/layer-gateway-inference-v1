@@ -50,7 +50,15 @@ Expected when all backends in `config.yaml` respond `GET /health` with 200:
 
 If not ready, endpoint returns `503` with `"status": "not_ready"` (missing app state, closed HTTP client, or any backend unhealthy).
 
-## 3) Metrics (`/metrics`)
+## 3) Version (`/version`)
+
+```bash
+curl -sS "$GATEWAY_URL/version" | jq .
+```
+
+Expected fields: `service`, `version`, `git_sha`, `git_branch`, `build_time`, `image`, `environment`.
+
+## 4) Metrics (`/metrics`)
 
 ```bash
 curl -sS "$GATEWAY_URL/metrics" | rg "gateway_requests_total|gateway_queue_depth|gateway_dispatch_total"
@@ -58,7 +66,7 @@ curl -sS "$GATEWAY_URL/metrics" | rg "gateway_requests_total|gateway_queue_depth
 
 Expected: one or more matching metric lines.
 
-## 4) Optional: quick correlation-ID check in logs
+## 5) Optional: quick correlation-ID check in logs
 
 Send a request and then check logs for the same ids:
 

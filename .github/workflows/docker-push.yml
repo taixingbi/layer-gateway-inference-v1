@@ -49,6 +49,11 @@ jobs:
           fi
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
+      - name: Build timestamp (UTC)
+        id: build_time
+        shell: bash
+        run: echo "iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -64,6 +69,12 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            GIT_SHA=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+            BUILD_TIME=${{ steps.build_time.outputs.iso }}
+            BUILD_IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/layer-gateway-inference-v1:${{ steps.version.outputs.version }}
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/layer-gateway-inference-v1:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/layer-gateway-inference-v1:${{ steps.version.outputs.version }}
