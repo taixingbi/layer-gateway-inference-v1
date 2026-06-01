@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
 
+from app.backends.probe import not_ready_payload, probe_backends, ready_payload
 from app.core.config import GatewayConfig
 from app.core.conversation import resolve_conversation_id, strip_conversation_fields
 from app.core.logging import log_gateway_event, new_request_id
@@ -38,11 +39,11 @@ async def health() -> dict[str, str]:
 
 @router.get("/ready")
 async def ready(request: Request) -> Response:
-    """Readiness probe: app state is initialized and outbound client is available."""
+    """Readiness: app state OK, then probe each configured vLLM backend GET /health."""
     required_state = ("cfg", "registry", "queue", "http")
     missing = [name for name in required_state if not hasattr(request.app.state, name)]
     if missing:
-        detail = {"status": "not_ready", "reason": "missing_state", "missing": missing}
+        detail = not_ready_payload(reason="missing_state", missing=missing)
         return Response(
             content=json.dumps(detail),
             status_code=503,
@@ -51,15 +52,18 @@ async def ready(request: Request) -> Response:
 
     client = request.app.state.http
     if getattr(client, "is_closed", False):
-        detail = {"status": "not_ready", "reason": "http_client_closed"}
+        detail = not_ready_payload(reason="http_client_closed")
         return Response(
             content=json.dumps(detail),
             status_code=503,
             media_type="application/json",
         )
 
+    backend_status = await probe_backends(request.app.state.cfg.backends, client)
+    body, status_code = ready_payload(backend_status)
     return Response(
-        content=json.dumps({"status": "ready"}),
+        content=json.dumps(body),
+        status_code=status_code,
         media_type="application/json",
     )
 

@@ -31,12 +31,24 @@ Expected response:
 curl -i -sS "$GATEWAY_URL/ready"
 ```
 
-Expected:
+Expected when all backends in `config.yaml` respond `GET /health` with 200:
 
 - `HTTP/1.1 200 OK`
-- Body includes `{"status":"ready"}`
+- Body:
 
-If not ready, endpoint returns `503` with JSON details (for example missing app state or closed HTTP client).
+```json
+{
+  "status": "ready",
+  "healthy_backends": 2,
+  "total_backends": 2,
+  "backends": {
+    "gpu-node-1": "healthy",
+    "gpu-node-2": "healthy"
+  }
+}
+```
+
+If not ready, endpoint returns `503` with `"status": "not_ready"` (missing app state, closed HTTP client, or any backend unhealthy).
 
 ## 3) Metrics (`/metrics`)
 

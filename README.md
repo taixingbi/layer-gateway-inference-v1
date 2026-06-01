@@ -58,7 +58,7 @@ safe retry on transient failure
 avoids hanging requests
 ✅ Backend health tracking
 passive (errors, latency)
-optional active (/health)
+`GET /ready` probes each configured vLLM `GET /health` (see `docs/smoke-test.md`)
 ✅ Works with vLLM batching
 does NOT replace batching
 improves which backend receives requests
