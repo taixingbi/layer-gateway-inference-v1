@@ -1,12 +1,10 @@
-# Build the image from the repo Dockerfile and push to Docker Hub on every push to `main`.
+# Build and push container image to GHCR on every push to `main`.
 #
-# Repository secrets (Settings -> Secrets and variables -> Actions):
-# DOCKERHUB_USERNAME - Docker Hub username or org
-# DOCKERHUB_TOKEN - Access token (recommended), not your account password
-# HUNTAI_K3S_PAT - PAT with contents:write on taixingbi/huntai-k3s (GitOps image pin)
+# Repository secrets:
+# HUNTAI_K3S_PAT — PAT with contents:write on taixingbi/huntai-k3s (GitOps image pin)
 #
-# Images: /<user>/layer-gateway-inference-v1:latest, :<ci-version>, and :<git-sha>
-name: Push to Docker Hub
+# Images: ghcr.io/<owner>/<repo>:latest, :<ci-version>, and :<full-git-sha>
+name: Push to GHCR
 
 on:
   push:
@@ -21,16 +19,21 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: docker-push-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   push:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,13 +60,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -74,11 +79,15 @@ jobs:
             GIT_SHA=${{ github.sha }}
             GIT_BRANCH=${{ github.ref_name }}
             BUILD_TIME=${{ steps.build_time.outputs.iso }}
-            BUILD_IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/layer-gateway-inference-v1:${{ steps.version.outputs.version }}
+            BUILD_IMAGE=${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/layer-gateway-inference-v1:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/layer-gateway-inference-v1:${{ steps.version.outputs.version }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/layer-gateway-inference-v1:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -91,6 +100,8 @@ jobs:
     concurrency:
       group: gitops-gateway-inference-${{ github.sha }}
       cancel-in-progress: false
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
     steps:
       - name: Checkout huntai-k3s
         uses: actions/checkout@v4
@@ -99,55 +110,18 @@ jobs:
           token: ${{ secrets.HUNTAI_K3S_PAT }}
           path: huntai-k3s
 
-      - name: Update gateway-inference image tag
+      - name: Pin gateway-inference image tag and digest
         env:
           TAG: ${{ needs.push.outputs.version }}
+          DIGEST: ${{ needs.push.outputs.digest }}
         working-directory: huntai-k3s
         shell: bash
         run: |
           set -euo pipefail
-          KUSTOMIZE_FILE="manifests/gateway-inference/overlays/dev/kustomization.yaml"
-          LEGACY_FILE="manifests/gateway/layer-gateway-inference-dev.yaml"
-          EXPECTED="docker.io/taixingbi/layer-gateway-inference-v1"
-          if [ -f "${KUSTOMIZE_FILE}" ]; then
-            TARGET_FILE="${KUSTOMIZE_FILE}"
-            TARGET_MODE="kustomize"
-            if ! grep -q '^images:' "${KUSTOMIZE_FILE}"; then
-              echo "Missing images: block in ${KUSTOMIZE_FILE} (push huntai-k3s GitOps overlay first)" >&2
-              exit 1
-            fi
-            ACTUAL="$(grep -E '^\s+-\s+name:' "${KUSTOMIZE_FILE}" | head -1 | sed -E 's/^[[:space:]]*-[[:space:]]*name:[[:space:]]*//;s/"//g;s/[[:space:]]*$//')"
-            if [ "${ACTUAL}" != "${EXPECTED}" ]; then
-              echo "Unexpected images[0].name: '${ACTUAL}' (expected '${EXPECTED}')" >&2
-              exit 1
-            fi
-            if ! grep -qE '^[[:space:]]*newTag:' "${KUSTOMIZE_FILE}"; then
-              echo "Missing newTag in ${KUSTOMIZE_FILE}" >&2
-              exit 1
-            fi
-            sed -i -E "s|^([[:space:]]*newTag:[[:space:]]*).*$|\1\"${TAG}\"|" "${KUSTOMIZE_FILE}"
-            grep -q "newTag: \"${TAG}\"" "${KUSTOMIZE_FILE}" || {
-              echo "newTag was not updated to ${TAG}" >&2
-              exit 1
-            }
-          elif [ -f "${LEGACY_FILE}" ]; then
-            TARGET_FILE="${LEGACY_FILE}"
-            TARGET_MODE="legacy"
-            if ! grep -qE "^[[:space:]]*image:[[:space:]]*${EXPECTED}:" "${LEGACY_FILE}"; then
-              echo "Expected image line not found in ${LEGACY_FILE}" >&2
-              exit 1
-            fi
-            sed -i -E "s|^([[:space:]]*image:[[:space:]]*${EXPECTED}:).*$|\1${TAG}|" "${LEGACY_FILE}"
-            grep -q "${EXPECTED}:${TAG}" "${LEGACY_FILE}" || {
-              echo "image was not updated to ${EXPECTED}:${TAG}" >&2
-              exit 1
-            }
-          else
-            echo "Missing both ${KUSTOMIZE_FILE} and ${LEGACY_FILE}" >&2
-            exit 1
-          fi
-          printf '%s\n' "${TARGET_FILE}" > .gitops-target-file
-          printf '%s\n' "${TARGET_MODE}" > .gitops-target-mode
+          bash scripts/pin-gitops-image.sh \
+            manifests/gateway-inference/overlays/dev/kustomization.yaml \
+            manifests/gateway/layer-gateway-inference-dev.yaml \
+            "${IMAGE}" "${TAG}" "${DIGEST}"
 
       - name: Commit and push
         working-directory: huntai-k3s
@@ -163,9 +137,12 @@ jobs:
           TARGET_FILE="$(sed -n '1p' .gitops-target-file)"
           TARGET_MODE="$(sed -n '1p' .gitops-target-mode)"
           git add "${TARGET_FILE}"
+          SHORT_DIGEST="${{ needs.push.outputs.digest }}"
+          SHORT_DIGEST="${SHORT_DIGEST#sha256:}"
+          SHORT_DIGEST="${SHORT_DIGEST:0:12}"
           if [ "${TARGET_MODE}" = "legacy" ]; then
-            git commit -m "chore(gateway-inference-dev): pin legacy image ${{ needs.push.outputs.version }}"
+            git commit -m "chore(gateway-inference-dev): pin legacy image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
           else
-            git commit -m "chore(gateway-inference-dev): pin image ${{ needs.push.outputs.version }}"
+            git commit -m "chore(gateway-inference-dev): pin image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
           fi
           git push origin HEAD:main

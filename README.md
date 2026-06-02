@@ -175,29 +175,29 @@ docker compose up -d --build
 
 Uncomment the `volumes` entry in `docker-compose.yml` when you need a host-specific `config.yaml`.
 
-### Pull and run from Docker Hub
+### Pull and run from GHCR
 
 On the target host, keep a **`config.yaml`** (backend NodePort URLs, etc.) in the directory you run from, and optionally **`.env`**, then:
 
 ```bash
 ssh tb@192.168.86.179
-sudo docker pull taixingbi/layer-gateway-inference-v1:latest
+sudo docker pull ghcr.io/taixingbi/layer-gateway-inference-v1:latest
 sudo docker rm -f gateway-inference
 sudo docker run -d --restart unless-stopped \
   --name gateway-inference \
   -p 8010:8010 \
   -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
   --env-file .env \
-  taixingbi/layer-gateway-inference-v1:latest
+  ghcr.io/taixingbi/layer-gateway-inference-v1:latest
 ```
 
 ### test with k3s
 
 Moved to `docs/smoke-test.md` under **6) k3s smoke examples**.
 
-### CI: publish to Docker Hub on `main`
+### CI: publish to GHCR on `main`
 
-Same pattern as [layer-gateway-embed-v1](https://github.com/taixingbi/layer-gateway-embed-v1): workflow `.github/workflows/docker-push.yml` runs on every push to **`main`** (and manual **workflow_dispatch**). Add repository secrets **`DOCKERHUB_USERNAME`** and **`DOCKERHUB_TOKEN`**. Images are tagged `latest` and `${{ github.sha }}`.
+Same pattern as [layer-gateway-embed-v1](https://github.com/taixingbi/layer-gateway-embed-v1): workflow `.github/workflows/docker-push.yml` runs on every push to **`main`** (and manual **workflow_dispatch**), pushes to `ghcr.io/taixingbi/layer-gateway-inference-v1`, and pins huntai-k3s on `main`. Secret **`HUNTAI_K3S_PAT`** for GitOps. Images: `latest`, short SHA, and full `${{ github.sha }}`.
 
 ⚡ Performance Benefits
 
