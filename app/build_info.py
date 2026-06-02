@@ -1,4 +1,4 @@
-"""Build and deployment metadata for GET /version."""
+"""Build and deployment metadata for GET /version (no dependency checks)."""
 
 from __future__ import annotations
 
@@ -24,5 +24,7 @@ def version_payload() -> dict[str, str]:
         "git_branch": _env("GIT_BRANCH"),
         "build_time": _env("BUILD_TIME"),
         "image": _env("BUILD_IMAGE"),
+        "image_digest": _env("IMAGE_DIGEST"),
         "environment": environment,
+        "status": "ok",
     }
