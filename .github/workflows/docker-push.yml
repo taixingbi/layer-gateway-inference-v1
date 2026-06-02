@@ -128,21 +128,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet; then
-            echo "No manifest change; skip commit"
-            exit 0
-          fi
-          TARGET_FILE="$(sed -n '1p' .gitops-target-file)"
           TARGET_MODE="$(sed -n '1p' .gitops-target-mode)"
-          git add "${TARGET_FILE}"
           SHORT_DIGEST="${{ needs.push.outputs.digest }}"
           SHORT_DIGEST="${SHORT_DIGEST#sha256:}"
           SHORT_DIGEST="${SHORT_DIGEST:0:12}"
           if [ "${TARGET_MODE}" = "legacy" ]; then
-            git commit -m "chore(gateway-inference-dev): pin legacy image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
+            export COMMIT_MSG="chore(gateway-inference-dev): pin legacy image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
           else
-            git commit -m "chore(gateway-inference-dev): pin image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
+            export COMMIT_MSG="chore(gateway-inference-dev): pin image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
           fi
-          git push origin HEAD:main
+          bash scripts/gitops-commit-push.sh
