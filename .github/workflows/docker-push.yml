@@ -119,23 +119,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/pin-gitops-image.sh \
-            manifests/gateway-inference/overlays/dev/kustomization.yaml \
-            manifests/gateway/layer-gateway-inference-dev.yaml \
-            "${IMAGE}" "${TAG}" "${DIGEST}"
+          for overlay in dev prod; do
+            bash scripts/pin-kustomize-image.sh \
+              "manifests/gateway-inference/overlays/${overlay}/kustomization.yaml" \
+              "${TAG}" "${DIGEST}"
+          done
 
       - name: Commit and push
         working-directory: huntai-k3s
         shell: bash
         run: |
           set -euo pipefail
-          TARGET_MODE="$(sed -n '1p' .gitops-target-mode)"
           SHORT_DIGEST="${{ needs.push.outputs.digest }}"
           SHORT_DIGEST="${SHORT_DIGEST#sha256:}"
           SHORT_DIGEST="${SHORT_DIGEST:0:12}"
-          if [ "${TARGET_MODE}" = "legacy" ]; then
-            export COMMIT_MSG="chore(gateway-inference-dev): pin legacy image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
-          else
-            export COMMIT_MSG="chore(gateway-inference-dev): pin image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
-          fi
-          bash scripts/gitops-commit-push.sh
+          export COMMIT_MSG="chore(gateway-inference): pin image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
+          bash scripts/gitops-commit-push.sh \
+            manifests/gateway-inference/overlays/dev/kustomization.yaml \
+            manifests/gateway-inference/overlays/prod/kustomization.yaml
