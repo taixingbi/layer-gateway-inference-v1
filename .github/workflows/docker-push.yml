@@ -119,11 +119,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for overlay in dev prod; do
-            bash scripts/pin-kustomize-image.sh \
-              "manifests/gateway-inference/overlays/${overlay}/kustomization.yaml" \
-              "${TAG}" "${DIGEST}"
-          done
+          bash scripts/pin-kustomize-image.sh \
+            manifests/gateway-inference/overlays/dev/kustomization.yaml \
+            "${TAG}" "${DIGEST}"
 
       - name: Commit and push
         working-directory: huntai-k3s
@@ -133,7 +131,6 @@ jobs:
           SHORT_DIGEST="${{ needs.push.outputs.digest }}"
           SHORT_DIGEST="${SHORT_DIGEST#sha256:}"
           SHORT_DIGEST="${SHORT_DIGEST:0:12}"
-          export COMMIT_MSG="chore(gateway-inference): pin image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
+          export COMMIT_MSG="chore(gateway-inference-dev): pin image ${{ needs.push.outputs.version }} @ ${SHORT_DIGEST}"
           bash scripts/gitops-commit-push.sh \
-            manifests/gateway-inference/overlays/dev/kustomization.yaml \
-            manifests/gateway-inference/overlays/prod/kustomization.yaml
+            manifests/gateway-inference/overlays/dev/kustomization.yaml
