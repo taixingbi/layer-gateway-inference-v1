@@ -168,6 +168,18 @@ def _is_openai_fallback(target: BackendTarget, cfg: GatewayConfig) -> bool:
     return cfg.openai_fallback.enabled and target.name == cfg.openai_fallback.backend_name
 
 
+def _upstream_chat_body(body: bytes, stream: bool) -> bytes:
+    """Ensure OpenAI-compatible upstream JSON includes explicit ``stream`` (vLLM defaults off)."""
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return body
+    if not isinstance(data, dict):
+        return body
+    data["stream"] = stream
+    return json.dumps(data, ensure_ascii=False).encode("utf-8")
+
+
 def _prepare_target_request(
     *,
     target: BackendTarget,
@@ -177,7 +189,10 @@ def _prepare_target_request(
 ) -> tuple[bytes, dict[str, str]]:
     """Return request body+headers tailored for the selected target."""
     out_headers = dict(headers)
-    body = pending.body
+    stream = pending.classify.stream
+    body = _upstream_chat_body(pending.body, stream)
+    if stream:
+        out_headers["accept"] = "text/event-stream"
     if not _is_openai_fallback(target, cfg):
         return body, out_headers
 
@@ -197,7 +212,8 @@ def _prepare_target_request(
     except (ValueError, UnicodeDecodeError):
         return body, out_headers
     data["model"] = cfg.openai_fallback.model
-    return json.dumps(data).encode("utf-8"), out_headers
+    data["stream"] = stream
+    return json.dumps(data, ensure_ascii=False).encode("utf-8"), out_headers
 
 
 async def proxy_chat_completion(
