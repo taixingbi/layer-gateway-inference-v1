@@ -23,14 +23,13 @@ routing:
 backends:
   - name: gpu-node-1
     url: http://192.168.86.173:30080
-    soft_limit: 20
-    hard_limit: 28
+    soft_limit: 12
+    hard_limit: 16
     drained: false
   - name: gpu-node-2
     url: http://192.168.86.176:30080
-    soft_limit: 20
-    hard_limit: 28
-    drained: false
+    soft_limit: 12
+    hard_limit: 16
 
 health:
   consecutive_failures_open: 5

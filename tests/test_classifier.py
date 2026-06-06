@@ -6,6 +6,18 @@ from app.core.types import RequestClass
 from app.scheduler.classifier import classify_chat_body
 
 
+def test_classify_default_stream_true():
+    body = json.dumps(
+        {
+            "model": "m",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 100,
+        }
+    ).encode()
+    r = classify_chat_body(body)
+    assert r.stream is True
+
+
 def test_classify_small():
     body = json.dumps(
         {

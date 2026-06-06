@@ -33,7 +33,7 @@ def classify_chat_body(body: bytes) -> ClassifyResult:
             max_tokens = int(max_tokens)
         except (TypeError, ValueError):
             max_tokens = None
-    stream = bool(data.get("stream", False))
+    stream = bool(data.get("stream", True))
     model = data.get("model")
     if isinstance(model, str):
         mname = model
