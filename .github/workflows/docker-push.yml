@@ -63,6 +63,18 @@ jobs:
           # Avoid booting docker-container buildkit (pulls moby/buildkit from Docker Hub; flaky on GH runners).
           driver: docker
 
+      - name: Pre-pull base image (retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="public.ecr.aws/docker/library/python:3.11-slim"
+          for attempt in 1 2 3 4 5; do
+            if docker pull "$BASE"; then exit 0; fi
+            echo "pull failed (attempt $attempt), retrying in 20s..."
+            sleep 20
+          done
+          exit 1
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
