@@ -27,6 +27,7 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
+  BUILDX_NO_DEFAULT_ATTESTATIONS: 1
 
 jobs:
   push:
@@ -89,13 +90,14 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          provenance: false
+          sbom: false
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
             GIT_SHA=${{ github.sha }}
             GIT_BRANCH=${{ github.ref_name }}
             BUILD_TIME=${{ steps.build_time.outputs.iso }}
             BUILD_IMAGE=${{ env.IMAGE }}:${{ steps.version.outputs.version }}
-            IMAGE_DIGEST=${{ steps.build.outputs.digest }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
